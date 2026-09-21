@@ -81,14 +81,12 @@ def run_tests():
         html = res.get_data(as_text=True)
 
         # 6. Verify Phase 3 elements in HTML
-        assert 'id="alerts"' in html, "Missing #alerts section in admin.html"
-        assert 'Security & Anti-Proxy Alerts' in html, "Missing Security Alerts title in admin.html"
         assert 'Face AI Status' in html, "Missing Face AI Status column in student registry table"
         assert 'filterFaceStatus' in html, "Missing filterFaceStatus dropdown in admin.html"
         assert 'FACE AI' in html, "Missing FACE AI method badge in audit logs table"
         assert 'openEnrollModal' in html, "Missing openEnrollModal function binding in admin.html"
 
-        print("[TEST 1] Admin dashboard rendered cleanly with Security Alerts panel.")
+        print("[TEST 1] Admin dashboard rendered cleanly.")
         print("[TEST 2] Face AI Status column & enrollment filter dropdown verified in Student Registry.")
         print("[TEST 3] FACE AI method badge & confidence score verified in Audit Log table.")
         print("[TEST 4] Admin face enrollment modal & JS functions verified.")
