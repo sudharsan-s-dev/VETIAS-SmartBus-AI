@@ -1,0 +1,12 @@
+flask
+flask-sqlalchemy
+flask-session
+qrcode
+pillow
+email-validator
+gunicorn
+python-dotenv
+werkzeug
+mediapipe
+opencv-python
+numpy

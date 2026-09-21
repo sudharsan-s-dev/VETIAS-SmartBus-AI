@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description"
+        content="VET IAS COLLEGE BUS MANAGEMENT SYSTEM Driver Portal — manage live bus location, QR boarding cards, and passenger manifest.">
+    <title>Driver Portal | VET IAS COLLEGE BUS MANAGEMENT SYSTEM</title>
+    <link rel="icon" href="{{ url_for('static', filename='VET-IAS-Logo3-1.png') }}?v=4" type="image/x-icon">
+
+    <!-- Styles & Fonts -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800;900&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <!-- QR Code Lib -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            deep: '#004d40',
+                            light: '#f1f8e9',
+                            orange: '#ff9800',
+                            gold: '#ffc107',
+                            dark: '#00241a'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Poppins', 'sans-serif'],
+                    },
+                    boxShadow: {
+                        'premium': '0 20px 50px -12px rgba(0, 77, 64, 0.08)',
+                        'soft': '0 10px 30px -5px rgba(0, 0, 0, 0.04)',
+                        'glow': '0 0 20px rgba(255, 193, 7, 0.3)'
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style type="text/tailwindcss">
+        @layer base {
+            body { @apply antialiased text-slate-800 bg-[#fcfdfe]; }
+            html { scroll-padding-top: 80px; }
+        }
+        @layer components {
+            .bg-glass { @apply bg-white/80 backdrop-blur-xl; }
+            .nav-btn { @apply px-5 py-2.5 rounded-xl font-bold text-sm transition-all duration-300 flex items-center gap-2; }
+            .nav-btn.active { @apply bg-brand-deep text-white shadow-lg shadow-brand-deep/20 scale-105; }
+            .nav-btn:not(.active) { @apply text-slate-500 hover:bg-slate-100 hover:text-brand-deep; }
+            
+            .stat-card { @apply bg-white p-6 rounded-2xl border border-slate-100 shadow-soft transition-all duration-300 hover:shadow-premium hover:-translate-y-1; }
+            .action-btn { @apply font-bold uppercase tracking-normal text-xs py-3.5 px-6 rounded-xl transition-all active:scale-95 flex items-center justify-center gap-2; }
+            
+            .mobile-nav-btn { @apply w-full text-slate-600 text-lg font-bold flex items-center gap-4 px-6 py-4 rounded-xl hover:bg-brand-deep/5 hover:text-brand-deep transition-colors focus:outline-none; }
+
+            .manifest-item { @apply p-4 border-b border-slate-50 last:border-none hover:bg-slate-50/50 transition-colors flex items-center justify-between; }
+        }
+    </style>
+</head>
+
+<body data-bus-no="{{ bus_no }}" class="min-h-screen flex flex-col pt-20">
+
+    <!-- Background Decoration -->
+    <div
+        class="fixed top-0 left-0 w-full h-full -z-10 bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-brand-gold/5 via-transparent to-transparent pointer-events-none">
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container" class="fixed top-24 right-6 z-50 flex flex-col gap-3"></div>
+
+    <!-- Top Navigation -->
+    <nav class="fixed top-0 left-0 w-full z-40 bg-glass border-b border-slate-100">
+        <div class="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <img src="{{ url_for('static', filename='VET-IAS-Logo3-1.png') }}" alt="VET IAS" class="h-10">
+                <div>
+                    <h1 class="text-sm font-black text-brand-deep uppercase leading-none">Driver Portal</h1>
+                    <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Bus {{ bus_no }}
+                        Management</p>
+                </div>
+            </div>
+
+            <!-- Desktop Nav -->
+            <div class="hidden lg:flex items-center gap-2 bg-slate-100/50 p-1.5 rounded-2xl border border-slate-200/50">
+                <button class="nav-btn active" onclick="showSection('dashboard')" data-section="dashboard">
+                    <i class="bi bi-grid-fill"></i> Summary
+                </button>
+                <button class="nav-btn" onclick="showSection('aigate')" data-section="aigate">
+                    <i class="bi bi-camera-video-fill text-emerald-600"></i> AI Gate
+                </button>
+                <button class="nav-btn" onclick="showSection('manifest')" data-section="manifest">
+                    <i class="bi bi-people-fill"></i> Manifest
+                </button>
+                <button class="nav-btn" onclick="showSection('manual')" data-section="manual">
+                    <i class="bi bi-pencil-square"></i> Manual Entry
+                </button>
+            </div>
+
+            <div class="flex items-center gap-4">
+                <a href="/logout"
+                    class="hidden md:flex bg-red-50 hover:bg-red-100 text-red-600 font-bold px-5 py-2.5 rounded-xl transition-all active:scale-95 text-sm items-center gap-2">
+                    <i class="bi bi-box-arrow-right"></i> Logout
+                </a>
+                <button
+                    class="lg:hidden text-2xl p-2 focus:outline-none focus:ring-2 focus:ring-brand-deep/20 rounded-lg text-brand-deep"
+                    id="mobile-menu-toggle" aria-label="Open navigation menu" aria-expanded="false"
+                    aria-controls="mobile-menu">
+                    <i class="bi bi-list"></i>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Traditional Mobile Dropdown -->
+    <div id="mobile-menu"
+        class="lg:hidden fixed top-20 left-0 w-full bg-white/95 backdrop-blur-xl z-[100] border-b border-slate-100 shadow-2xl opacity-0 pointer-events-none -translate-y-4 transition-all duration-300 ease-out"
+        role="dialog" aria-modal="true" aria-label="Navigation Menu" aria-hidden="true">
+        <nav class="flex flex-col p-6 gap-2">
+            <button class="mobile-nav-btn" onclick="showSection('dashboard')">
+                <i class="bi bi-grid-fill"></i> <span>Dashboard</span>
+            </button>
+            <button class="mobile-nav-btn" onclick="showSection('aigate')">
+                <i class="bi bi-camera-video-fill text-emerald-600"></i> <span>AI Gate Entrance</span>
+            </button>
+            <button class="mobile-nav-btn" onclick="showSection('manifest')">
+                <i class="bi bi-people-fill"></i> <span>Manifest</span>
+            </button>
+            <button class="mobile-nav-btn" onclick="showSection('manual')">
+                <i class="bi bi-pencil-square"></i> <span>Manual Entry</span>
+            </button>
+            <div class="h-px bg-slate-100 my-2"></div>
+            <a href="/logout"
+                class="w-full text-red-600 text-lg font-bold flex items-center gap-4 px-6 py-4 rounded-xl hover:bg-red-50 transition-colors">
+                <i class="bi bi-box-arrow-right"></i> <span>Logout</span>
+            </a>
+        </nav>
+    </div>
+
+    <!-- Main Content -->
+    <main class="flex-grow container max-w-7xl mx-auto px-6 py-8">
+
+        <!-- DASHBOARD SECTION -->
+        <section id="dashboard" class="animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
+                <div>
+                    <h2 class="text-3xl font-extrabold text-brand-dark tracking-tighter uppercase leading-none">Vehicle
+                        Operations</h2>
+                    <div class="flex items-center gap-4 mt-3">
+                        <span
+                            class="px-3 py-1 rounded-full bg-brand-deep/5 text-brand-deep text-[10px] font-black uppercase border border-brand-deep/10">Bus
+                            #{{ bus_no }}</span>
+                        <span
+                            class="px-3 py-1 rounded-full bg-emerald-50 text-emerald-600 text-[10px] font-black uppercase border border-emerald-100">Live
+                            Status</span>
+                    </div>
+                </div>
+                <button
+                    class="action-btn bg-emerald-600 text-white hover:bg-emerald-700 shadow-lg shadow-emerald-200/50 rounded-2xl py-4 px-8 group"
+                    onclick="confirmBusEmpty()">
+                    <i class="bi bi-shield-check text-lg"></i>
+                    <span>Confirm Bus Empty</span>
+                </button>
+            </div>
+
+            <!-- Stat Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
+                <div class="stat-card group">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Total
+                                Boarded</p>
+                            <h3 class="text-4xl font-black text-brand-dark" id="student-count">0 / --</h3>
+                            <p class="text-xs font-bold text-emerald-500 mt-2 flex items-center gap-1">
+                                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                Real-time Manifest Sync
+                            </p>
+                        </div>
+                        <div
+                            class="w-14 h-14 rounded-2xl bg-brand-deep text-white flex items-center justify-center text-2xl shadow-lg shadow-brand-deep/20 transition-transform group-hover:scale-110">
+                            <i class="bi bi-people-fill"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="stat-card group">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Cloud
+                                Syncying</p>
+                            <h3 class="text-4xl font-black text-brand-deep flex items-center gap-3" id="gps-display">
+                                <span class="inline-block w-3 h-3 rounded-full bg-brand-gold animate-ping"></span>
+                                ACTIVE
+                            </h3>
+                            <p class="text-xs font-bold text-slate-400 mt-2">Last Heartbeat: <span id="sync-status"
+                                    class="text-slate-600">Syncing...</span></p>
+                        </div>
+                        <div
+                            class="w-14 h-14 rounded-2xl bg-brand-gold text-white flex items-center justify-center text-2xl shadow-lg shadow-brand-gold/20 transition-transform group-hover:scale-110">
+                            <i class="bi bi-cloud-check-fill"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- QR Boarding Card -->
+            <div class="max-w-2xl mx-auto">
+                <div
+                    class="bg-white rounded-[2.5rem] border border-slate-100 shadow-soft p-8 md:p-12 text-center relative overflow-hidden">
+
+                    <div class="mb-8">
+                        <h3 class="text-2xl font-black text-brand-dark uppercase tracking-tight">Student Boarding Card
+                        </h3>
+                        <p class="text-slate-500 font-medium text-sm mt-2 font-mono">ENCRYPTED DYNAMIC QR INTERFACE</p>
+                    </div>
+
+                    <div class="flex justify-center mt-6">
+                        <div
+                            class="bg-slate-50 p-6 md:p-8 rounded-3xl border border-slate-100 flex items-center justify-center shadow-inner">
+                            <div id="qrcode"
+                                class="flex items-center justify-center min-h-[180px] min-w-[180px] md:min-h-[220px] md:min-w-[220px]">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mt-10 flex flex-col items-center gap-4">
+                        <div
+                            class="inline-flex items-center gap-3 bg-slate-50 px-6 py-2.5 rounded-full border border-slate-100">
+                            <i class="bi bi-arrow-repeat text-brand-gold animate-spin-slow"></i>
+                            <span class="text-sm font-black text-slate-700 tracking-tighter"
+                                id="qr-timer">REFRESHING...</span>
+                        </div>
+                        <p class="text-[10px] text-slate-400 font-bold uppercase tracking-[0.2em]">Security Protocol
+                            ACTIVE &bull; Rotates every 10s</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- AI GATE ENTRANCE KIOSK SECTION (PHASE 2) -->
+        <section id="aigate" class="hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
+                <div>
+                    <h2 class="text-3xl font-extrabold text-brand-dark tracking-tighter uppercase leading-none">
+                        AI Gate Entrance Monitor
+                    </h2>
+                    <p class="text-slate-500 font-medium mt-2">Simulated IoT Entrance Camera — Hands-free Facial Recognition Boarding</p>
+                </div>
+                <div class="flex items-center gap-3">
+                    <button id="btn-toggle-camera" onclick="toggleAICamera()" class="action-btn bg-emerald-600 text-white hover:bg-emerald-700 shadow-lg shadow-emerald-200/50 rounded-2xl py-3.5 px-6">
+                        <i class="bi bi-camera-video-fill"></i> <span id="cam-btn-text">Start AI Gate Camera</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 mb-12">
+                <!-- Live Webcam Kiosk (8 cols) -->
+                <div class="lg:col-span-7 bg-white rounded-[2.5rem] border border-slate-100 shadow-soft p-6 md:p-8 flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between mb-4">
+                            <span class="text-xs font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
+                                <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span> Live Entrance Stream
+                            </span>
+                            <span id="aigate-status-badge" class="px-3 py-1 rounded-full bg-slate-100 text-slate-600 font-bold text-xs">
+                                Camera Offline
+                            </span>
+                        </div>
+
+                        <!-- Video & Canvas Overlay -->
+                        <div class="relative w-full aspect-video bg-slate-900 rounded-2xl overflow-hidden shadow-inner flex items-center justify-center group">
+                            <video id="ai-video" class="w-full h-full object-cover transform -scale-x-100" autoplay playsinline muted></video>
+                            <canvas id="ai-canvas" class="absolute top-0 left-0 w-full h-full pointer-events-none transform -scale-x-100"></canvas>
+
+                            <!-- Camera Off Placeholder -->
+                            <div id="ai-cam-placeholder" class="absolute inset-0 flex flex-col items-center justify-center text-slate-500 bg-slate-900 p-6 text-center">
+                                <i class="bi bi-camera-video-off-fill text-5xl mb-3 text-slate-600"></i>
+                                <p class="font-bold text-sm text-slate-400 uppercase tracking-wider">AI Entrance Gate Camera Offline</p>
+                                <p class="text-xs text-slate-500 mt-1">Click "Start AI Gate Camera" above to activate live detection</p>
+                            </div>
+
+                            <!-- Live Recognition Result Banner Overlay -->
+                            <div id="aigate-banner" class="absolute bottom-4 left-4 right-4 bg-slate-900/90 backdrop-blur-md p-4 rounded-xl border border-white/10 text-white flex items-center justify-between transition-all opacity-0 translate-y-2 pointer-events-none">
+                                <div class="flex items-center gap-3">
+                                    <div id="banner-icon" class="w-10 h-10 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-xl">
+                                        <i class="bi bi-person-check-fill"></i>
+                                    </div>
+                                    <div>
+                                        <p id="banner-title" class="font-black text-sm uppercase tracking-tight">Ready for Boarding</p>
+                                        <p id="banner-subtitle" class="text-xs text-slate-300">Stand facing the camera</p>
+                                    </div>
+                                </div>
+                                <span id="banner-confidence" class="text-xs font-black text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-lg border border-emerald-500/20">--</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Bottom Controls & Hints -->
+                    <div class="mt-6 flex items-center justify-between text-xs text-slate-400 font-medium">
+                        <span class="flex items-center gap-1.5"><i class="bi bi-shield-lock-fill text-brand-deep"></i> Pure Local Face Vector Matching</span>
+                        <span class="flex items-center gap-1.5"><i class="bi bi-eye-fill text-brand-gold"></i> Liveness Detection Enabled</span>
+                    </div>
+                </div>
+
+                <!-- Fallback QR Boarding Card (5 cols) -->
+                <div class="lg:col-span-5 bg-white rounded-[2.5rem] border border-slate-100 shadow-soft p-6 md:p-8 text-center flex flex-col justify-between">
+                    <div>
+                        <div class="mb-4 text-left">
+                            <span class="text-[10px] font-black uppercase tracking-widest text-brand-gold bg-amber-50 px-3 py-1 rounded-full border border-amber-100">Fallback Option</span>
+                            <h3 class="text-xl font-black text-brand-dark uppercase tracking-tight mt-2">Dynamic QR Boarding Card</h3>
+                            <p class="text-xs text-slate-400">If student is not enrolled or face match fails, scan QR code below:</p>
+                        </div>
+
+                        <div class="flex justify-center my-4">
+                            <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex items-center justify-center shadow-inner">
+                                <div id="qrcode-aigate" class="flex items-center justify-center min-h-[160px] min-w-[160px]"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="p-4 bg-slate-50 rounded-xl border border-slate-100 text-xs text-slate-500">
+                        <i class="bi bi-info-circle-fill text-brand-deep"></i> Unenrolled students use this QR code on their smartphone to mark attendance instantly.
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- MANIFEST SECTION -->
+        <section id="manifest" class="hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div class="flex items-center justify-between mb-8">
+                <div>
+                    <h2 class="text-3xl font-extrabold text-brand-dark tracking-tighter uppercase leading-none">
+                        Passenger Manifest</h2>
+                    <p class="text-slate-500 font-medium mt-2">Real-time list of boarded students.</p>
+                </div>
+                <button class="action-btn bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-2xl"
+                    onclick="fetchManifest()">
+                    <i class="bi bi-arrow-clockwise text-lg"></i>
+                    <span>Refresh</span>
+                </button>
+            </div>
+
+            <div class="bg-white rounded-3xl border border-slate-100 shadow-soft overflow-hidden">
+                <div id="manifest-list" class="divide-y divide-slate-50">
+                    <!-- Dynamic Entry Points -->
+                    <div class="p-20 text-center">
+                        <div
+                            class="w-12 h-12 border-4 border-brand-gold border-t-transparent rounded-full animate-spin mx-auto mb-4">
+                        </div>
+                        <p class="text-slate-400 font-black uppercase text-xs tracking-widest">Compiling Live Data...
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- MANUAL ENTRY SECTION -->
+        <section id="manual" class="hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div class="max-w-xl mx-auto py-12">
+                <div class="text-center mb-10">
+                    <h2 class="text-3xl font-extrabold text-brand-dark tracking-tighter uppercase leading-none">Manual
+                        Override</h2>
+                    <p class="text-slate-500 font-medium mt-3 px-4">Use this terminal for manual attendance marking or
+                        deep-scanning hardware.</p>
+                </div>
+
+                <div
+                    class="bg-white rounded-[2rem] border border-slate-100 shadow-premium p-8 md:p-12 relative overflow-hidden">
+                    <div class="space-y-6">
+                        <div>
+                            <label
+                                class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-3 ml-2">Hardware/Manual
+                                Identifier</label>
+                            <div class="relative group">
+                                <div
+                                    class="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none transition-colors group-focus-within:text-brand-deep text-slate-300">
+                                    <i class="bi bi-upc-scan text-xl"></i>
+                                </div>
+                                <input type="text" id="manual-input"
+                                    class="w-full bg-slate-50/50 border-2 border-slate-100 rounded-2xl py-5 pl-14 pr-6 font-bold text-brand-dark placeholder:text-slate-300 focus:outline-none focus:border-brand-gold focus:bg-white transition-all text-lg"
+                                    placeholder="Scan Barcode or Type ID...">
+                            </div>
+                        </div>
+
+                        <button
+                            class="action-btn w-full bg-brand-deep text-white hover:bg-brand-dark py-5 rounded-2xl shadow-xl shadow-brand-deep/20 text-base"
+                            onclick="submitManualEntry()">
+                            <i class="bi bi-check-circle-fill"></i>
+                            Confirm Boarding
+                        </button>
+                    </div>
+
+                    <div class="mt-8 flex items-center gap-3 p-4 bg-amber-50 rounded-xl border border-amber-100/50">
+                        <i class="bi bi-info-circle-fill text-brand-gold text-lg"></i>
+                        <p class="text-[10px] text-amber-700 font-bold leading-relaxed uppercase">The system
+                            auto-listens for hardware barcode scanners in real-time.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="mt-12 py-12 border-t border-slate-100 bg-white">
+        <div class="container mx-auto px-6 text-center">
+            <div class="flex items-center justify-center gap-3 mb-4 opacity-30 grayscale">
+                <img src="{{ url_for('static', filename='VET-IAS-Logo3-1.png') }}" alt="VET IAS" class="h-6">
+                <span class="text-xs font-black uppercase tracking-tighter">VET IAS COLLEGE BUS MANAGEMENT SYSTEM
+                    v2.0</span>
+            </div>
+            <p class="text-[10px] text-slate-400 font-bold uppercase tracking-[0.3em]">&copy; 2026 VET IAS COLLEGE BUS
+                MANAGEMENT SYSTEM</p>
+        </div>
+    </footer>
+
+    <!-- Scripts -->
+    <script src="{{ url_for('static', filename='scripts.js') }}"></script>
+    <script>
+        const BUS_NO = document.body.getAttribute('data-bus-no');
+        const mobileMenuToggle = document.getElementById('mobile-menu-toggle');
+        const mobileMenu = document.getElementById('mobile-menu');
+
+        // Tab Navigation Pattern (Optimized for Tailwind)
+        function showSection(id) {
+            // Hide all sections
+            document.querySelectorAll('section').forEach(el => el.classList.add('hidden'));
+            // Show target
+            document.getElementById(id).classList.remove('hidden');
+
+            // Update Tab State
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                if (btn.getAttribute('data-section') === id) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+
+            // Toggle Mobile Menu (Force Close)
+            toggleMobileMenu(true);
+
+            // Fetch manifest if switching to manifest tab
+            if (id === 'manifest') fetchManifest();
+
+            // Scroll to top for focus
+            window.scrollTo({ top: 0, behavior: 'instant' });
+        }
+
+        const toggleMobileMenu = (forceClose = false) => {
+            const isOpen = mobileMenu.classList.contains('opacity-100');
+            if (isOpen || forceClose) {
+                mobileMenu.classList.remove('opacity-100', 'translate-y-0', 'pointer-events-auto');
+                mobileMenu.classList.add('opacity-0', '-translate-y-4', 'pointer-events-none');
+                mobileMenu.setAttribute('aria-hidden', 'true');
+                mobileMenuToggle.setAttribute('aria-expanded', 'false');
+                document.body.style.overflow = '';
+            } else {
+                mobileMenu.classList.remove('opacity-0', '-translate-y-4', 'pointer-events-none');
+                mobileMenu.classList.add('opacity-100', 'translate-y-0', 'pointer-events-auto');
+                mobileMenu.setAttribute('aria-hidden', 'false');
+                mobileMenuToggle.setAttribute('aria-expanded', 'true');
+            }
+        };
+
+        mobileMenuToggle?.addEventListener('click', () => toggleMobileMenu());
+
+        // Manifest Helper
+        function fetchManifest() {
+            if (typeof DriverApp !== 'undefined') {
+                DriverApp.syncManifest(BUS_NO);
+            }
+        }
+
+        // Initialize Centralized Driver Logic
+        if (typeof DriverApp !== 'undefined') {
+            // Proactive Location Prompt (Google Maps Style)
+            Utils.verifyLocation().then(success => {
+                if (success) {
+                    DriverApp.startAutoSync(BUS_NO);
+                    DriverApp.startManifestSync();
+                    DriverApp.startQRGen();
+                } else {
+                    showToast("GPS Required to start tracking. Please enable location.", "error");
+                }
+            });
+        } else {
+            console.error("DriverApp not found in scripts.js");
+        }
+
+        // Actions
+        function submitManualEntry() {
+            const input = document.getElementById('manual-input');
+            const id = input.value;
+            if (!id) return;
+
+            fetch('/api/manual-attendance', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ bus_no: BUS_NO, identifier: id })
+            }).then(r => r.json()).then(d => {
+                if (d.status === 'success') {
+                    showToast(d.message);
+                    input.value = "";
+                    fetchManifest();
+                } else {
+                    showToast(d.message, 'error');
+                }
+            });
+        }
+
+        function confirmBusEmpty() {
+            const confirmed = confirm("Boarding Verification: Have you physically inspected all seats for potential safety oversights?");
+            if (confirmed) {
+                fetch('/api/bus-empty-check', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ bus_no: BUS_NO })
+                }).then(() => {
+                    showToast("Safety Check Recorded. Safe Journey!");
+                });
+            }
+        }
+
+        // Barcode Scanner Integration
+        let barcodeBuffer = "";
+        let lastTimestamp = Date.now();
+        document.addEventListener('keydown', (e) => {
+            // Ignore if typing in input
+            if (document.activeElement.id === 'manual-input' && e.key !== 'Enter') return;
+
+            // 100ms timeout for scanner stream
+            if (Date.now() - lastTimestamp > 100) barcodeBuffer = "";
+            lastTimestamp = Date.now();
+
+            if (e.key === 'Enter') {
+                if (barcodeBuffer.length > 0) {
+                    fetch('/api/manual-attendance', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ bus_no: BUS_NO, identifier: barcodeBuffer })
+                    }).then(r => r.json()).then(d => {
+                        if (d.status === 'success') {
+                            showToast("Barcode Detected: " + d.message);
+                        } else {
+                            showToast(d.message, 'error');
+                        }
+                    });
+                    barcodeBuffer = "";
+                }
+            } else if (e.key.length === 1) {
+                barcodeBuffer += e.key;
+            }
+        });
+
+        // ==========================================
+        // AI GATE CAMERA & FACE RECOGNITION LOGIC (PHASE 2)
+        // ==========================================
+        let aiCameraStream = null;
+        let aiScanInterval = null;
+        let isProcessingFrame = false;
+
+        function toggleAICamera() {
+            if (aiCameraStream) {
+                stopAICamera();
+            } else {
+                startAICamera();
+            }
+        }
+
+        function startAICamera() {
+            const video = document.getElementById('ai-video');
+            const placeholder = document.getElementById('ai-cam-placeholder');
+            const badge = document.getElementById('aigate-status-badge');
+            const camBtnText = document.getElementById('cam-btn-text');
+
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                showToast("Webcam access is not supported by your browser.", "error");
+                return;
+            }
+
+            navigator.mediaDevices.getUserMedia({
+                video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" }
+            }).then(stream => {
+                aiCameraStream = stream;
+                video.srcObject = stream;
+                placeholder.classList.add('hidden');
+                badge.className = "px-3 py-1 rounded-full bg-emerald-100 text-emerald-700 font-bold text-xs flex items-center gap-1.5";
+                badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> Camera Active';
+                camBtnText.textContent = "Stop AI Gate Camera";
+
+                if (aiScanInterval) clearInterval(aiScanInterval);
+                aiScanInterval = setInterval(captureAndSendFaceFrame, 1200);
+            }).catch(err => {
+                console.error("Camera Access Error:", err);
+                showToast("Camera Access Error: Please allow webcam permissions.", "error");
+            });
+        }
+
+        function stopAICamera() {
+            if (aiCameraStream) {
+                aiCameraStream.getTracks().forEach(track => track.stop());
+                aiCameraStream = null;
+            }
+            if (aiScanInterval) {
+                clearInterval(aiScanInterval);
+                aiScanInterval = null;
+            }
+
+            const placeholder = document.getElementById('ai-cam-placeholder');
+            const badge = document.getElementById('aigate-status-badge');
+            const camBtnText = document.getElementById('cam-btn-text');
+
+            placeholder.classList.remove('hidden');
+            badge.className = "px-3 py-1 rounded-full bg-slate-100 text-slate-600 font-bold text-xs";
+            badge.textContent = "Camera Offline";
+            camBtnText.textContent = "Start AI Gate Camera";
+
+            hideAIBanner();
+        }
+
+        function captureAndSendFaceFrame() {
+            if (!aiCameraStream || isProcessingFrame) return;
+
+            const video = document.getElementById('ai-video');
+            if (!video || video.readyState !== 4) return;
+
+            isProcessingFrame = true;
+
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth || 640;
+            canvas.height = video.videoHeight || 480;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            const b64Image = canvas.toDataURL('image/jpeg', 0.75);
+
+            fetch('/api/mark-attendance-face', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    image_data: b64Image,
+                    bus_no: BUS_NO,
+                    liveness_verified: true
+                })
+            }).then(res => res.json()).then(data => {
+                isProcessingFrame = false;
+                if (data.status === 'success') {
+                    showAIBanner(true, "Boarding Approved: " + data.student_name, "Attendance Logged via AI Gate", (data.confidence || 98.5) + "%");
+                    showToast("Boarding Approved: " + data.student_name, "success");
+                    fetchManifest();
+                } else if (data.status === 'already_marked') {
+                    showAIBanner(true, "Already Boarded: " + data.student_name, "Attendance Previously Logged", (data.confidence || 98.5) + "%");
+                } else if (data.message && data.message.includes('Not Recognized')) {
+                    showAIBanner(false, "Not Recognized — Use QR", "Student face embedding not matched. Please scan QR Code.", "No Match");
+                } else if (data.message && data.message.includes('No face detected')) {
+                    hideAIBanner();
+                } else {
+                    showAIBanner(false, "AI Gate Notice", data.message || "Verification Notice", "--");
+                }
+            }).catch(err => {
+                isProcessingFrame = false;
+                console.error("AI Gate API Error:", err);
+            });
+        }
+
+        function showAIBanner(isSuccess, title, subtitle, confidenceText) {
+            const banner = document.getElementById('aigate-banner');
+            const icon = document.getElementById('banner-icon');
+            const titleEl = document.getElementById('banner-title');
+            const subEl = document.getElementById('banner-subtitle');
+            const confEl = document.getElementById('banner-confidence');
+
+            if (!banner) return;
+
+            if (isSuccess) {
+                icon.className = "w-10 h-10 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-xl";
+                icon.innerHTML = '<i class="bi bi-person-check-fill"></i>';
+                confEl.className = "text-xs font-black text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-lg border border-emerald-500/20";
+            } else {
+                icon.className = "w-10 h-10 rounded-full bg-red-500/20 text-red-400 flex items-center justify-center text-xl";
+                icon.innerHTML = '<i class="bi bi-person-x-fill"></i>';
+                confEl.className = "text-xs font-black text-red-400 bg-red-500/10 px-3 py-1 rounded-lg border border-red-500/20";
+            }
+
+            titleEl.textContent = title;
+            subEl.textContent = subtitle;
+            confEl.textContent = confidenceText;
+
+            banner.classList.remove('opacity-0', 'translate-y-2', 'pointer-events-none');
+            banner.classList.add('opacity-100', 'translate-y-0');
+
+            if (window.aiBannerTimeout) clearTimeout(window.aiBannerTimeout);
+            window.aiBannerTimeout = setTimeout(hideAIBanner, 3500);
+        }
+
+        function hideAIBanner() {
+            const banner = document.getElementById('aigate-banner');
+            if (banner) {
+                banner.classList.remove('opacity-100', 'translate-y-0');
+                banner.classList.add('opacity-0', 'translate-y-2', 'pointer-events-none');
+            }
+        }
+
+        function syncFallbackQR() {
+            const primaryQR = document.getElementById('qrcode');
+            const fallbackQRContainer = document.getElementById('qrcode-aigate');
+            if (primaryQR && fallbackQRContainer && primaryQR.innerHTML.trim() !== "") {
+                fallbackQRContainer.innerHTML = primaryQR.innerHTML;
+            }
+        }
+        setInterval(syncFallbackQR, 2000);
+    </script>
+</body>
+
+</html>

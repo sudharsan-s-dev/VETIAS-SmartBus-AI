@@ -1,0 +1,45 @@
+VET IAS COLLEGE BUS MANAGEMENT SYSTEM - LOCAL HOST SETUP GUIDE
+==========================================
+
+Follow these steps to run the project on your local machine:
+
+STEP 1: Create a Virtual Environment (Optional but Recommended)
+--------------------------------------------------------------
+Open your terminal in the project folder and run:
+python -m venv .venv
+
+STEP 2: Activate the Virtual Environment
+----------------------------------------
+- On Windows:
+  .venv\Scripts\activate
+- On Mac/Linux:
+  source .venv/bin/activate
+
+STEP 3: Install Dependencies
+----------------------------
+Run the following command to install the required libraries:
+pip install Flask Flask-SQLAlchemy Flask-Session python-dotenv Werkzeug
+
+STEP 4: Configure Environment Variables
+---------------------------------------
+1. Create a new file named '.env' in the root directory.
+2. Copy the contents from '.env.example' into '.env'.
+3. Update the SMTP_USER and SMTP_PASSWORD with your credentials to enable email notifications.
+
+STEP 5: Initialize the Database
+-------------------------------
+Run the following bridge script or visit the initialization URL after starting the app:
+访问 http://127.0.0.1:5000/init-db once the app is running to create the initial student account.
+
+STEP 6: Run the Application
+---------------------------
+Execute the main script:
+python app.py
+
+The application will be available at: http://127.0.0.1:5000
+
+Login Credentials (Default):
+---------------------------
+- Admin: admin / admin
+- Driver: driver / pass
+- Student: (Initialize via /init-db or register via UI)

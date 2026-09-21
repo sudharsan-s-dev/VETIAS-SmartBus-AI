@@ -1,0 +1,32 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment & local variables
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Flask session filesystem cache & logs
+flask_session/
+*.log
+system_activity.log
+
+# Production Database (Excluded from git, kept locally)
+instance/*.db
+instance/*.sqlite
+!instance/.gitkeep
+
+# Temporary scratch & runtime snapshot uploads
+scratch/
+static/uploads/snapshots/*.jpg
+static/uploads/snapshots/*.png
+
+# OS generated files
+.DS_Store
+Thumbs.db
