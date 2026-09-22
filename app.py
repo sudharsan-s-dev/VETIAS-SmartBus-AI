@@ -54,6 +54,13 @@ GEOFENCE_LIMIT = int(os.environ.get('GEOFENCE_LIMIT', 100)) # Default 100m for b
 db.init_app(app)
 Session(app)
 
+@app.after_request
+def add_no_cache_headers(response):
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
+
 # AUTO-CREATE DATABASE TABLES & MIGRATE NEW PHASE 1 COLUMNS FOR EXISTING DB
 with app.app_context():
     db.create_all()

@@ -274,11 +274,11 @@
                                     </span>
                                 </td>
                                 <td class="px-6 py-4 text-sm font-semibold">
-                                    {% if log.method == 'FACE' or log.entry_method == 'FACE' %}
+                                    {% if (log.method and 'FACE' in log.method|string|upper) or (log.entry_method and 'FACE' in log.entry_method|string|upper) %}
                                     <span class="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-700 text-xs font-black rounded-lg border border-emerald-200 uppercase">
                                         <i class="bi bi-person-bounding-box text-emerald-600"></i> Face AI Verification
                                     </span>
-                                    {% elif log.method == 'BARCODE' or log.entry_method == 'BARCODE' %}
+                                    {% elif (log.method and 'BARCODE' in log.method|string|upper) or (log.entry_method and 'BARCODE' in log.entry_method|string|upper) %}
                                     <span class="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-50 text-indigo-700 text-xs font-black rounded-lg border border-indigo-200 uppercase">
                                         <i class="bi bi-upc-scan text-indigo-600"></i> Barcode Scan
                                     </span>
