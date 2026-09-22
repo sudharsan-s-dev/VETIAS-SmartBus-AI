@@ -389,9 +389,9 @@ def health():
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
-        fullname = request.form.get('fullname')
-        email = request.form.get('email')
-        student_id = request.form.get('studentId')
+        fullname = (request.form.get('fullname') or '').strip()
+        email = (request.form.get('email') or '').strip().lower()
+        student_id = (request.form.get('studentId') or '').strip().upper()
         phone = request.form.get('phone')
         department = request.form.get('department')
         year = request.form.get('year')
@@ -404,9 +404,12 @@ def register():
         parent_email = request.form.get('parent_email')
         password = request.form.get('password')
 
-        # Check if already exists
-        if Student.query.filter((Student.email == email) | (Student.student_id_str == student_id)).first():
-            return render_template('register.html', error="Email or Student ID already registered.")
+        # Check if already exists (case-insensitive)
+        if Student.query.filter(
+            (db.func.lower(Student.email) == email.lower()) | 
+            (db.func.lower(Student.student_id_str) == student_id.lower())
+        ).first():
+            return render_template('register.html', error="Email or Student ID (Roll Number) is already registered.")
 
         new_student = Student(
             name=fullname,

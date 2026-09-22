@@ -273,7 +273,21 @@
                                         {{ log.bus_no }}
                                     </span>
                                 </td>
-                                <td class="px-6 py-4 text-sm font-medium text-slate-400 italic">Secure QR Scan</td>
+                                <td class="px-6 py-4 text-sm font-semibold">
+                                    {% if log.method == 'FACE' or log.entry_method == 'FACE' %}
+                                    <span class="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-700 text-xs font-black rounded-lg border border-emerald-200 uppercase">
+                                        <i class="bi bi-person-bounding-box text-emerald-600"></i> Face AI Verification
+                                    </span>
+                                    {% elif log.method == 'BARCODE' or log.entry_method == 'BARCODE' %}
+                                    <span class="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-50 text-indigo-700 text-xs font-black rounded-lg border border-indigo-200 uppercase">
+                                        <i class="bi bi-upc-scan text-indigo-600"></i> Barcode Scan
+                                    </span>
+                                    {% else %}
+                                    <span class="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-50 text-blue-700 text-xs font-black rounded-lg border border-blue-200 uppercase">
+                                        <i class="bi bi-qr-code-scan text-blue-600"></i> Secure QR Scan
+                                    </span>
+                                    {% endif %}
+                                </td>
                                 <td class="px-6 py-4">
                                     <span class="inline-flex items-center gap-1 text-emerald-500 font-bold text-xs">
                                         <i class="bi bi-patch-check-fill"></i> Verified
