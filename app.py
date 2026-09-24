@@ -450,15 +450,18 @@ def login():
         password = request.form.get('password')
         device_id = request.form.get('device_id') # From JS
 
+        u_clean = (username or '').strip()
+        p_clean = (password or '').strip()
+
         if user_type == 'student':
             # Support Login by Name, ID, String ID, or Email
             student = Student.query.filter(
-                (Student.name == username) | 
-                (Student.id == username) | 
-                (Student.student_id_str == username) |
-                (Student.email == username)
+                (db.func.lower(Student.name) == u_clean.lower()) | 
+                (Student.id == u_clean) | 
+                (db.func.lower(Student.student_id_str) == u_clean.lower()) |
+                (db.func.lower(Student.email) == u_clean.lower())
             ).first()
-            if student and check_password_hash(student.password, password):
+            if student and check_password_hash(student.password, p_clean):
                 # Device Binding Check
                 print(f"[DEBUG LOGIN] Student: {student.name}, DB Device: {student.device_id}, Incoming Device: {device_id}")
                 if student.device_id and not SKIP_DEVICE_CHECK:
@@ -487,20 +490,20 @@ def login():
                 return redirect(url_for('student_dashboard'))
         
         elif user_type == 'driver':
-            # Hardcoded driver for demo
-            if username == 'driver' and password == 'pass':
+            # Flexible driver login (driver or drive, case-insensitive, trimmed)
+            if u_clean.lower() in ['driver', 'drive', 'driver10', 'driver-10', 'bus-10', 'bus10'] and p_clean == 'pass':
                 session['user_id'] = 999
                 session['user_type'] = 'driver'
                 session['bus_no'] = 'Bus-10' # Assigned bus
                 return redirect(url_for('driver_dashboard'))
 
         elif user_type == 'admin':
-             if username == 'admin' and password == 'admin':
+             if u_clean.lower() == 'admin' and p_clean == 'admin':
                 session['user_id'] = 1
                 session['user_type'] = 'admin'
                 return redirect(url_for('admin_dashboard'))
 
-        return render_template('login.html', error="Invalid Credentials")
+        return render_template('login.html', error="Invalid Credentials. For Driver, use Username: 'driver' (or 'drive') and Password: 'pass'")
 
     return render_template('login.html', success=success)
 
