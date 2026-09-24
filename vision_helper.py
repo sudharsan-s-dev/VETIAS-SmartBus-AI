@@ -148,6 +148,17 @@ def extract_deep_embedding_from_landmarks(cv2_bgr_img, landmarks):
     else:
         aligned = cv2.warpAffine(cv2_bgr_img, M, (112, 112), borderValue=0)
 
+    # Lighting Normalization (CLAHE on L-channel of LAB color space)
+    try:
+        lab = cv2.cvtColor(aligned, cv2.COLOR_BGR2LAB)
+        l, a, b = cv2.split(lab)
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        cl = clahe.apply(l)
+        limg = cv2.merge((cl, a, b))
+        aligned = cv2.cvtColor(limg, cv2.COLOR_LAB2BGR)
+    except Exception as norm_err:
+        pass
+
     rgb = cv2.cvtColor(aligned, cv2.COLOR_BGR2RGB)
     blob = (rgb.astype(np.float32) - 127.5) / 127.5
     blob = np.transpose(blob, (2, 0, 1))

@@ -93,8 +93,9 @@ print(f"   SMTP USER: {os.environ.get('SMTP_USER', 'NOT SET')}")
 print("="*50 + "\n")
 sys.stdout.flush()
 
-# In-Memory Cache for Bus Locations (Energy Efficient - No DB Write)
+# In-Memory Cache for Bus Locations & Trip Resets (Energy Efficient)
 BUS_LOCATION_CACHE = {} 
+BUS_EMPTY_CACHE = {}
 
 
 import base64
@@ -685,7 +686,7 @@ def driver_heartbeat():
     
     # PERSIST TO DB (Fix for "Bus not active" after restart)
     try:
-        bus_live = BusLive.query.get(bus_no)
+        bus_live = db.session.get(BusLive, bus_no)
         if not bus_live:
             bus_live = BusLive(bus_no=bus_no)
             db.session.add(bus_live)
@@ -693,7 +694,7 @@ def driver_heartbeat():
         bus_live.lat = lat
         bus_live.lng = lng
         bus_live.driver_name = session.get('username', 'Driver') # Optional update
-        bus_live.last_updated = datetime.datetime.utcnow()
+        bus_live.last_updated = datetime.datetime.now()
         db.session.commit()
     except Exception as e:
         print(f"DB Write Error in Heartbeat: {e}")
@@ -745,19 +746,30 @@ def bus_manifest():
 @login_required
 def manual_attendance():
     # Helper for Driver/Admin to manually add
-    data = request.json
-    bus_no = data.get('bus_no')
-    identifier = data.get('identifier') # ID or Name
+    data = request.json or {}
+    bus_no = data.get('bus_no', 'Bus-10')
+    identifier = (data.get('identifier') or '').strip()
     
-    student = Student.query.filter((Student.id == identifier) | (Student.name == identifier)).first()
+    if not identifier:
+        return jsonify({'status': 'error', 'message': 'Student Roll No / ID is required'})
+
+    # Flexible matching by Roll No (student_id_str), Email, Name (case-insensitive), or Integer ID
+    student = Student.query.filter(
+        (db.func.lower(Student.student_id_str) == identifier.lower()) |
+        (db.func.lower(Student.email) == identifier.lower()) |
+        (db.func.lower(Student.name) == identifier.lower()) |
+        (Student.id == int(identifier) if identifier.isdigit() else False)
+    ).first()
+
     if not student:
-        return jsonify({'status': 'error', 'message': 'Student not found'})
+        return jsonify({'status': 'error', 'message': f'Student "{identifier}" not found in registry'})
 
     new_att = Attendance(
         student_id=student.id,
         student_name=student.name,
         timestamp=datetime.datetime.now(),
         bus_no=bus_no,
+        method='MANUAL',
         entry_method='MANUAL',
         verification_status='VERIFIED_MANUAL'
     )
@@ -772,20 +784,21 @@ def manual_attendance():
     if os.environ.get('SMS_SIMULATION_MODE', 'True') == 'True':
         send_parent_sms(student, bus_no, time_str, date_str)
     
-    # Professional Email (New Service Layer)
+    # Professional Email (Service Layer)
     print(f"[DEBUG MANUAL] Success for {student.name}. Triggering email...")
     email_status = NotificationService.send_parent_email(student.parent_email, student.name, bus_no, time_str, date_str)
     print(f"[DEBUG MANUAL] Email Dispatch Result: {email_status}")
     
-    return jsonify({'status': 'success', 'message': f'Added {student.name}'})
+    return jsonify({'status': 'success', 'message': f'Boarded: {student.name}'})
 
 @app.route('/api/bus-empty-check', methods=['POST'])
 @login_required
 def bus_empty_check():
-    bus_no = request.json.get('bus_no')
-    # Log this event
-    print(f"!!! BUS CHECKED EMPTY: {bus_no} by {session.get('user_type')} at {datetime.datetime.now()} !!!")
-    return jsonify({'status': 'success'})
+    data = request.json or {}
+    bus_no = data.get('bus_no') or session.get('bus_no', 'Bus-10')
+    BUS_EMPTY_CACHE[bus_no] = datetime.datetime.now()
+    print(f"!!! BUS CHECKED EMPTY & OCCUPANCY RESET: {bus_no} by {session.get('user_type')} at {datetime.datetime.now()} !!!")
+    return jsonify({'status': 'success', 'message': 'Safety Check Recorded & Occupancy Reset for New Trip'})
 
 # --- ADMIN ---
 
@@ -1022,7 +1035,7 @@ def mark_attendance_face():
 
     best_student = None
     min_dist = 999.0
-    MATCH_THRESHOLD = 0.45  # Cosine Distance Threshold for Option B ONNX MobileFaceNet (Dist < 0.45 = MATCH)
+    MATCH_THRESHOLD = 0.65  # Cosine Distance Threshold for Option B ONNX MobileFaceNet (Dist < 0.65 = MATCH)
 
     for student in enrolled_students:
         if not student.face_embedding:
@@ -1059,11 +1072,15 @@ def mark_attendance_face():
 
         confidence = round(max(0.0, (1.0 - min_dist) * 100), 1)
 
-        # DEBOUNCE / DUPLICATE CHECK: Prevent continuous duplicate attendance records
-        five_mins_ago = datetime.datetime.now() - datetime.timedelta(minutes=5)
+        # DEBOUNCE / DUPLICATE CHECK: Check if student has already boarded on this bus trip today
+        today_start = datetime.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        last_empty = BUS_EMPTY_CACHE.get(bus_no, today_start)
+        since_time = max(today_start, last_empty)
+
         existing_att = Attendance.query.filter(
             Attendance.student_id == best_student.id,
-            Attendance.timestamp >= five_mins_ago
+            db.func.lower(Attendance.bus_no) == bus_no.lower(),
+            Attendance.timestamp >= since_time
         ).first()
 
         if existing_att:
@@ -1150,9 +1167,13 @@ def bus_occupancy(bus_no):
     capacity = BUS_CAPACITY.get(bus_norm, 40)
     today_start = datetime.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
     
+    # Respect last 'Confirm Bus Empty' reset for active trip tracking
+    last_empty = BUS_EMPTY_CACHE.get(bus_norm, today_start)
+    since_time = max(today_start, last_empty)
+
     unique_boarded = db.session.query(Attendance.student_id).filter(
         db.func.lower(Attendance.bus_no) == bus_norm.lower(),
-        Attendance.timestamp >= today_start
+        Attendance.timestamp >= since_time
     ).distinct().count()
     
     occupied_count = min(unique_boarded, capacity)

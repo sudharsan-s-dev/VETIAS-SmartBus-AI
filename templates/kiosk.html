@@ -205,12 +205,14 @@
         VETIAS SmartBus AI &bull; IoT Edge Entrance Kiosk System &bull; Version 3.2
     </footer>
 
-    <!-- Kiosk Script -->
     <script>
         const busNo = document.body.dataset.busNo || 'Bus-10';
         let isProcessing = false;
-        let scanInterval = None;
+        let scanInterval = null;
         let lastBbox = null;
+        let video = null;
+        let canvas = null;
+        let ctx = null;
 
         // Digital Clock
         function updateClock() {
@@ -344,12 +346,14 @@
         setInterval(updateKioskQR, 10000);
 
         // --- WEBCAM & CANVAS BOUNDING BOX OVERLAY ---
-        const video = document.getElementById('kiosk-video');
-        const canvas = document.getElementById('kiosk-canvas');
-        const ctx = canvas.getContext('2d');
-
         async function startKioskCamera() {
             try {
+                video = document.getElementById('kiosk-video');
+                canvas = document.getElementById('kiosk-canvas');
+                if (canvas) ctx = canvas.getContext('2d');
+
+                if (!video) throw new Error("Video element #kiosk-video not found in DOM");
+
                 document.getElementById('kiosk-idle').style.display = 'none';
                 document.getElementById('kiosk-status-text').textContent = 'Status: Camera Active & Scanning...';
 
@@ -368,7 +372,7 @@
         }
 
         function drawLoop() {
-            if (video.readyState === video.HAVE_ENOUGH_DATA) {
+            if (video && video.readyState >= 2) {
                 canvas.width = video.videoWidth || 640;
                 canvas.height = video.videoHeight || 480;
 
@@ -410,22 +414,24 @@
             requestAnimationFrame(drawLoop);
         }
 
+        let scanCooldownUntil = 0;
+
         async function captureAndRecognize() {
-            if (isProcessing || video.readyState !== video.HAVE_ENOUGH_DATA) return;
+            if (isProcessing || Date.now() < scanCooldownUntil || !video || video.readyState < 2) return;
             isProcessing = true;
 
             try {
                 const tmpCanvas = document.createElement('canvas');
-                tmpCanvas.width = canvas.width;
-                tmpCanvas.height = canvas.height;
+                tmpCanvas.width = canvas.width || 640;
+                tmpCanvas.height = canvas.height || 480;
                 const tmpCtx = tmpCanvas.getContext('2d');
-                tmpCtx.drawImage(video, 0, 0);
+                tmpCtx.drawImage(video, 0, 0, tmpCanvas.width, tmpCanvas.height);
 
                 const dataUri = tmpCanvas.toDataURL('image/jpeg', 0.85);
 
                 const res = await fetch('/api/mark-attendance-face', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application.json' },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         image_data: dataUri,
                         bus_no: busNo,
@@ -436,13 +442,23 @@
                 const result = await res.json();
                 lastBbox = result.bbox || null;
 
-                if (result.status === 'success' || result.status === 'already_marked') {
+                if (result.status === 'success') {
+                    scanCooldownUntil = Date.now() + 5000; // 5-second pause before scanning next student
                     playSuccessChime();
-                    showMatchBanner(result.student_name, result.confidence || 100);
+                    showMatchBanner(result.student_name, result.confidence || 100, "Boarding Approved");
                     updateOccupancy();
-                } else if (result.status === 'error' && result.message.includes('Liveness')) {
-                    playAlertChime();
-                    showAlertBanner(result.message);
+                } else if (result.status === 'already_marked') {
+                    scanCooldownUntil = Date.now() + 5000; // 5-second pause
+                    showMatchBanner(result.student_name, result.confidence || 100, "Already Boarded Today");
+                    updateOccupancy();
+                } else if (result.status === 'error') {
+                    if (result.message && result.message.includes('Liveness')) {
+                        playAlertChime();
+                        showAlertBanner(result.message);
+                    } else if (result.message && result.message.includes('Not Recognized')) {
+                        console.log('Kiosk AI Notice:', result.message);
+                        showAlertBanner("Face Not Recognized — Adjust Lighting or Scan QR");
+                    }
                 }
             } catch (e) {
                 console.log('Scan error:', e);
@@ -451,10 +467,12 @@
             }
         }
 
-        function showMatchBanner(name, confidence) {
+        function showMatchBanner(name, confidence, title = "Boarding Approved") {
             const banner = document.getElementById('kiosk-match-banner');
             document.getElementById('banner-name').textContent = name;
             document.getElementById('banner-confidence').textContent = `${confidence}% Match`;
+            const badgeEl = banner.querySelector('span.text-\\[10px\\]');
+            if (badgeEl) badgeEl.textContent = title;
             document.getElementById('banner-time').textContent = `Boarded: ${new Date().toLocaleTimeString()}`;
 
             banner.classList.remove('opacity-0', 'pointer-events-none', 'translate-y-4');
