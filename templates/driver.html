@@ -169,7 +169,7 @@
             </div>
 
             <!-- Stat Cards -->
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
                 <div class="stat-card group">
                     <div class="flex justify-between items-start">
                         <div>
@@ -184,6 +184,26 @@
                         <div
                             class="w-14 h-14 rounded-2xl bg-brand-deep text-white flex items-center justify-center text-2xl shadow-lg shadow-brand-deep/20 transition-transform group-hover:scale-110">
                             <i class="bi bi-people-fill"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="stat-card group">
+                    <div class="flex justify-between items-start">
+                        <div class="w-full pr-2">
+                            <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Live Bus Occupancy</p>
+                            <h3 class="text-4xl font-black text-brand-deep" id="driver-occupancy-text">0 / 40</h3>
+                            <div class="w-full bg-slate-100 rounded-full h-2 mt-3 overflow-hidden">
+                                <div id="driver-occupancy-bar" class="bg-emerald-500 h-2 rounded-full transition-all duration-500" style="width: 0%"></div>
+                            </div>
+                            <p class="text-[10px] font-bold text-slate-500 mt-2 flex items-center justify-between">
+                                <span id="driver-occupancy-pct">0% Capacity</span>
+                                <span id="driver-occupancy-badge" class="px-2 py-0.5 rounded text-[9px] font-black bg-emerald-50 text-emerald-600">Available</span>
+                            </p>
+                        </div>
+                        <div
+                            class="w-14 h-14 rounded-2xl bg-emerald-600 text-white flex items-center justify-center text-2xl shadow-lg shadow-emerald-600/20 transition-transform group-hover:scale-110 flex-shrink-0">
+                            <i class="bi bi-bus-front-fill"></i>
                         </div>
                     </div>
                 </div>
@@ -467,11 +487,42 @@
 
         mobileMenuToggle?.addEventListener('click', () => toggleMobileMenu());
 
+        // Occupancy Helper
+        function updateBusOccupancy() {
+            fetch(`/api/bus-occupancy/${BUS_NO}`).then(r => r.json()).then(data => {
+                const textEl = document.getElementById('driver-occupancy-text');
+                const barEl = document.getElementById('driver-occupancy-bar');
+                const pctEl = document.getElementById('driver-occupancy-pct');
+                const badgeEl = document.getElementById('driver-occupancy-badge');
+
+                if (textEl) textEl.innerText = `${data.occupied_count} / ${data.total_capacity}`;
+                if (barEl) barEl.style.width = `${data.occupancy_pct}%`;
+                if (pctEl) pctEl.innerText = `${data.occupancy_pct}% Capacity`;
+
+                if (barEl && badgeEl) {
+                    if (data.occupancy_pct > 90) {
+                        barEl.className = "bg-red-500 h-2 rounded-full transition-all duration-500";
+                        badgeEl.className = "px-2 py-0.5 rounded text-[9px] font-black bg-red-50 text-red-600";
+                        badgeEl.innerText = "Almost Full (>90%)";
+                    } else if (data.occupancy_pct >= 75) {
+                        barEl.className = "bg-amber-500 h-2 rounded-full transition-all duration-500";
+                        badgeEl.className = "px-2 py-0.5 rounded text-[9px] font-black bg-amber-50 text-amber-600";
+                        badgeEl.innerText = "Filling Up (75-90%)";
+                    } else {
+                        barEl.className = "bg-emerald-500 h-2 rounded-full transition-all duration-500";
+                        badgeEl.className = "px-2 py-0.5 rounded text-[9px] font-black bg-emerald-50 text-emerald-600";
+                        badgeEl.innerText = "Available (<75%)";
+                    }
+                }
+            }).catch(e => console.error("Occupancy fetch error:", e));
+        }
+
         // Manifest Helper
         function fetchManifest() {
             if (typeof DriverApp !== 'undefined') {
                 DriverApp.syncManifest(BUS_NO);
             }
+            updateBusOccupancy();
         }
 
         // Initialize Centralized Driver Logic
@@ -482,6 +533,8 @@
                     DriverApp.startAutoSync(BUS_NO);
                     DriverApp.startManifestSync();
                     DriverApp.startQRGen();
+                    updateBusOccupancy();
+                    setInterval(updateBusOccupancy, 5000);
                 } else {
                     showToast("GPS Required to start tracking. Please enable location.", "error");
                 }

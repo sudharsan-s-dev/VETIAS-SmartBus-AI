@@ -186,7 +186,7 @@
                 <p class="text-slate-500 font-medium mt-2">Real-time metrics and daily operational health.</p>
             </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
                 <div class="stat-card">
                     <div class="flex justify-between items-start">
                         <div>
@@ -202,6 +202,7 @@
                         </div>
                     </div>
                 </div>
+
                 <div class="stat-card">
                     <div class="flex justify-between items-start">
                         <div>
@@ -218,6 +219,41 @@
                         </div>
                     </div>
                 </div>
+
+                <div class="stat-card">
+                    <div class="flex justify-between items-start">
+                        <div class="w-full pr-2">
+                            <div class="flex items-center justify-between gap-1 mb-1">
+                                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Bus Occupancy</p>
+                                <select id="admin-bus-select" class="text-[10px] font-bold bg-slate-100 border border-slate-200 rounded px-1 py-0.5 text-slate-700 focus:outline-none" onchange="fetchAdminOccupancy()">
+                                    <option value="Bus-10" selected>Bus-10</option>
+                                    <option value="Bus-01">Bus-01</option>
+                                    <option value="Bus-02">Bus-02</option>
+                                    <option value="Bus-03">Bus-03</option>
+                                    <option value="Bus-04">Bus-04</option>
+                                    <option value="Bus-05">Bus-05</option>
+                                    <option value="Bus-06">Bus-06</option>
+                                    <option value="Bus-07">Bus-07</option>
+                                    <option value="Bus-08">Bus-08</option>
+                                    <option value="Bus-09">Bus-09</option>
+                                </select>
+                            </div>
+                            <h3 class="text-3xl font-black text-brand-deep" id="admin-occupancy-text">0 / 40</h3>
+                            <div class="w-full bg-slate-100 rounded-full h-2 mt-2 overflow-hidden">
+                                <div id="admin-occupancy-bar" class="bg-emerald-500 h-2 rounded-full transition-all duration-500" style="width: 0%"></div>
+                            </div>
+                            <p class="text-[10px] font-bold text-slate-500 mt-2 flex items-center justify-between">
+                                <span id="admin-occupancy-pct">0% Capacity</span>
+                                <span id="admin-occupancy-status" class="px-1.5 py-0.5 rounded text-[8px] font-black bg-emerald-50 text-emerald-600">Available</span>
+                            </p>
+                        </div>
+                        <div
+                            class="w-12 h-12 bg-purple-50 text-purple-600 rounded-xl flex items-center justify-center text-xl shadow-inner border border-purple-100/50 flex-shrink-0">
+                            <i class="bi bi-bus-front-fill"></i>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="stat-card">
                     <div class="flex justify-between items-start">
                         <div>
@@ -947,12 +983,40 @@
             mobileMenuToggle?.addEventListener('click', () => toggleMobileMenu());
             closeMobileMenu?.addEventListener('click', () => toggleMobileMenu(true));
 
-            // Close on Escape key
-            document.addEventListener('keydown', (e) => {
-                if (e.key === 'Escape' && mobileMenu.classList.contains('translate-x-0')) {
-                    toggleMobileMenu(true);
-                }
-            });
+            // Admin Occupancy Monitor
+            window.fetchAdminOccupancy = function() {
+                const busSelect = document.getElementById('admin-bus-select');
+                const busNo = busSelect ? busSelect.value : 'Bus-10';
+                fetch(`/api/bus-occupancy/${busNo}`).then(r => r.json()).then(data => {
+                    const textEl = document.getElementById('admin-occupancy-text');
+                    const barEl = document.getElementById('admin-occupancy-bar');
+                    const pctEl = document.getElementById('admin-occupancy-pct');
+                    const statusEl = document.getElementById('admin-occupancy-status');
+
+                    if (textEl) textEl.innerText = `${data.occupied_count} / ${data.total_capacity}`;
+                    if (barEl) barEl.style.width = `${data.occupancy_pct}%`;
+                    if (pctEl) pctEl.innerText = `${data.occupancy_pct}% Capacity`;
+
+                    if (barEl && statusEl) {
+                        if (data.occupancy_pct > 90) {
+                            barEl.className = "bg-red-500 h-2 rounded-full transition-all duration-500";
+                            statusEl.className = "px-1.5 py-0.5 rounded text-[8px] font-black bg-red-50 text-red-600";
+                            statusEl.innerText = "Almost Full (>90%)";
+                        } else if (data.occupancy_pct >= 75) {
+                            barEl.className = "bg-amber-500 h-2 rounded-full transition-all duration-500";
+                            statusEl.className = "px-1.5 py-0.5 rounded text-[8px] font-black bg-amber-50 text-amber-600";
+                            statusEl.innerText = "Filling Up (75-90%)";
+                        } else {
+                            barEl.className = "bg-emerald-500 h-2 rounded-full transition-all duration-500";
+                            statusEl.className = "px-1.5 py-0.5 rounded text-[8px] font-black bg-emerald-50 text-emerald-600";
+                            statusEl.innerText = "Available (<75%)";
+                        }
+                    }
+                }).catch(e => console.error("Admin occupancy fetch error:", e));
+            };
+
+            fetchAdminOccupancy();
+            setInterval(fetchAdminOccupancy, 5000);
         });
     </script>
 </body>

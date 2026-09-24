@@ -1005,17 +1005,17 @@ def mark_attendance_face():
     if img is None:
         return jsonify({'status': 'error', 'message': 'Could not decode image.'}), 400
 
-    status, result = vision_helper.process_image_for_embedding(img)
+    status, result, bbox = vision_helper.process_image_for_embedding(img, return_bbox=True)
 
     # Do not clutter disk or DB when no face is detected in background frames
     if status != 'SUCCESS':
-        return jsonify({'status': 'error', 'message': result})
+        return jsonify({'status': 'error', 'message': result, 'bbox': None})
 
     current_embedding = result
     enrolled_students = Student.query.filter_by(face_enrolled=True).all()
 
     if not enrolled_students:
-        return jsonify({'status': 'error', 'message': 'Not Recognized — Use QR'})
+        return jsonify({'status': 'error', 'message': 'Not Recognized — Use QR', 'bbox': bbox})
 
     best_student = None
     min_dist = 999.0
@@ -1052,7 +1052,7 @@ def mark_attendance_face():
             )
             db.session.add(alert)
             db.session.commit()
-            return jsonify({'status': 'error', 'message': 'Liveness Verification Failed — Blink Required'})
+            return jsonify({'status': 'error', 'message': 'Liveness Verification Failed — Blink Required', 'bbox': bbox})
 
         confidence = round(max(0.0, (1.0 - min_dist) * 100), 1)
 
@@ -1069,7 +1069,8 @@ def mark_attendance_face():
                 'message': f'Boarded: {best_student.name} (Already Marked)',
                 'student_name': best_student.name,
                 'student_id': best_student.id,
-                'confidence': confidence
+                'confidence': confidence,
+                'bbox': bbox
             })
 
         # SUCCESSFUL FIRST FACE RECOGNITION BOARDING: Save snapshot for Admin Review
@@ -1122,11 +1123,49 @@ def mark_attendance_face():
             'message': f'Boarding Approved: {best_student.name}',
             'student_name': best_student.name,
             'student_id': best_student.id,
-            'confidence': confidence
+            'confidence': confidence,
+            'bbox': bbox
         })
     else:
         # Unrecognized face: do not flood disk with background frames
-        return jsonify({'status': 'error', 'message': 'Not Recognized — Use QR'})
+        return jsonify({'status': 'error', 'message': 'Not Recognized — Use QR', 'bbox': bbox})
+
+# --- BUS OCCUPANCY & IOT KIOSK (PHASE 4) ---
+
+BUS_CAPACITY = {
+    "Bus-01": 40, "BUS-01": 40,
+    "Bus-06": 40, "BUS-06": 40,
+    "Bus-07": 40, "BUS-07": 40,
+    "Bus-08": 40, "BUS-08": 40,
+    "Bus-09": 40, "BUS-09": 40,
+    "Bus-10": 40, "BUS-10": 40,
+}
+
+@app.route('/api/bus-occupancy/<bus_no>')
+def bus_occupancy(bus_no):
+    bus_norm = bus_no.strip()
+    capacity = BUS_CAPACITY.get(bus_norm, 40)
+    today_start = datetime.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    unique_boarded = db.session.query(Attendance.student_id).filter(
+        db.func.lower(Attendance.bus_no) == bus_norm.lower(),
+        Attendance.timestamp >= today_start
+    ).distinct().count()
+    
+    occupied_count = min(unique_boarded, capacity)
+    occupancy_pct = round((occupied_count / capacity) * 100, 1)
+    
+    return jsonify({
+        "bus_no": bus_norm,
+        "occupied_count": occupied_count,
+        "total_capacity": capacity,
+        "occupancy_pct": occupancy_pct
+    })
+
+@app.route('/kiosk')
+def kiosk():
+    bus_no = request.args.get('bus_no', 'Bus-10')
+    return render_template('kiosk.html', bus_no=bus_no)
 
 if __name__ == "__main__":
     # Local development startup

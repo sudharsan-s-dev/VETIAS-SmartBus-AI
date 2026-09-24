@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>IoT Entrance Kiosk | VET IAS SmartBus AI</title>
+    <link rel="icon" href="{{ url_for('static', filename='VET-IAS-Logo3-1.png') }}?v=4" type="image/x-icon">
+
+    <!-- Tailwind & Bootstrap Icons -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+
+    <!-- QR Code Library for Fallback Card -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        kiosk: {
+                            bg: '#090d16',
+                            card: '#121826',
+                            border: '#1e293b',
+                            accent: '#10b981',
+                            gold: '#f59e0b'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Plus Jakarta Sans', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+
+<body class="bg-[#090d16] text-slate-100 font-sans min-h-screen flex flex-col justify-between overflow-x-hidden selection:bg-emerald-500/20" data-bus-no="{{ bus_no }}">
+
+    <!-- Header / Navbar -->
+    <header class="border-b border-slate-800/80 bg-[#090d16]/90 backdrop-blur-md px-6 py-4 flex items-center justify-between sticky top-0 z-50">
+        <div class="flex items-center gap-4">
+            <img src="{{ url_for('static', filename='VET-IAS-Logo3-1.png') }}" alt="VET IAS" class="h-10 w-auto">
+            <div>
+                <div class="flex items-center gap-2">
+                    <h1 class="font-extrabold text-lg tracking-tight text-white uppercase">IoT Entrance Kiosk</h1>
+                    <span class="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 uppercase tracking-wider flex items-center gap-1">
+                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span> Live Edge Node
+                    </span>
+                </div>
+                <p class="text-xs text-slate-400 font-mono mt-0.5">BUS NODE: <span class="text-emerald-400 font-bold" id="kiosk-bus-id">{{ bus_no }}</span></p>
+            </div>
+        </div>
+
+        <!-- Live Clock & Status -->
+        <div class="flex items-center gap-6">
+            <div class="hidden sm:flex flex-col items-end">
+                <span class="text-xs text-slate-400 font-semibold uppercase tracking-wider">Node Clock</span>
+                <span id="digital-clock" class="font-mono text-lg font-extrabold text-slate-200">00:00:00</span>
+            </div>
+            <a href="/driver" class="px-4 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-xs font-bold text-slate-300 transition-colors flex items-center gap-2 border border-slate-700">
+                <i class="bi bi-speedometer2"></i> Driver Portal
+            </a>
+        </div>
+    </header>
+
+    <!-- Main Content Area: Camera Feed (Left) & QR Fallback + Occupancy (Right) -->
+    <main class="max-w-7xl mx-auto px-4 md:px-6 py-6 flex-1 w-full grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        
+        <!-- LEFT COLUMN: Live Entrance AI Camera Feed (8 cols) -->
+        <div class="lg:col-span-7 flex flex-col gap-4">
+            <div class="bg-[#121826] rounded-3xl border border-slate-800 p-4 shadow-2xl relative overflow-hidden">
+                <div class="flex items-center justify-between mb-3 px-2">
+                    <div class="flex items-center gap-2">
+                        <i class="bi bi-camera-video-fill text-emerald-400"></i>
+                        <span class="text-xs font-extrabold text-slate-300 uppercase tracking-wider">Entrance Face AI Scanner</span>
+                    </div>
+                    <span id="scan-pulse-badge" class="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> Scanning Active
+                    </span>
+                </div>
+
+                <!-- Camera Container -->
+                <div class="relative w-full aspect-[4/3] bg-[#050811] rounded-2xl overflow-hidden border border-slate-800 flex items-center justify-center">
+                    
+                    <!-- Hidden Video -->
+                    <video id="kiosk-video" autoplay playsinline muted style="display:none;"></video>
+
+                    <!-- Visible Output Canvas -->
+                    <canvas id="kiosk-canvas" class="w-full h-full object-cover block"></canvas>
+
+                    <!-- Scanning Grid Overlay -->
+                    <div class="absolute inset-0 pointer-events-none opacity-20 bg-[linear-gradient(to_right,#1e293b_1px,transparent_1px),linear-gradient(to_bottom,#1e293b_1px,transparent_1px)] bg-[size:2rem_2rem]"></div>
+
+                    <!-- Idle Overlay before Camera Start -->
+                    <div id="kiosk-idle" class="absolute inset-0 bg-[#090d16] flex flex-col items-center justify-center gap-4 z-20">
+                        <div class="w-16 h-16 rounded-2xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center text-3xl border border-emerald-500/20">
+                            <i class="bi bi-camera-video"></i>
+                        </div>
+                        <div class="text-center">
+                            <h3 class="font-bold text-slate-200 text-base">Camera Ready</h3>
+                            <p class="text-xs text-slate-400 mt-1">Click start to launch the IoT AI entrance scanner</p>
+                        </div>
+                        <button onclick="startKioskCamera()" class="px-6 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-sm uppercase tracking-wider transition-all shadow-lg shadow-emerald-500/20 flex items-center gap-2">
+                            <i class="bi bi-power"></i> Launch Entrance Scanner
+                        </button>
+                    </div>
+
+                    <!-- On-Screen Match Notification Banner -->
+                    <div id="kiosk-match-banner" class="absolute bottom-4 left-4 right-4 bg-emerald-950/90 border border-emerald-500/50 backdrop-blur-xl p-4 rounded-2xl shadow-2xl flex items-center gap-4 transition-all duration-300 opacity-0 pointer-events-none translate-y-4 z-30">
+                        <div class="w-12 h-12 rounded-xl bg-emerald-500 text-slate-950 flex items-center justify-center text-2xl font-black shrink-0">
+                            <i class="bi bi-person-check-fill"></i>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center justify-between">
+                                <span class="text-[10px] font-black text-emerald-400 uppercase tracking-widest">Boarding Approved</span>
+                                <span class="text-xs font-bold text-emerald-300 font-mono" id="banner-confidence">100% Match</span>
+                            </div>
+                            <h4 class="font-black text-lg text-white truncate mt-0.5" id="banner-name">Student Name</h4>
+                            <p class="text-xs text-emerald-200/80 font-mono mt-0.5" id="banner-time">Timestamp</p>
+                        </div>
+                    </div>
+
+                    <!-- On-Screen Alert Banner -->
+                    <div id="kiosk-alert-banner" class="absolute bottom-4 left-4 right-4 bg-red-950/90 border border-red-500/50 backdrop-blur-xl p-4 rounded-2xl shadow-2xl flex items-center gap-4 transition-all duration-300 opacity-0 pointer-events-none translate-y-4 z-30">
+                        <div class="w-12 h-12 rounded-xl bg-red-500 text-white flex items-center justify-center text-2xl font-black shrink-0">
+                            <i class="bi bi-shield-exclamation"></i>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <span class="text-[10px] font-black text-red-400 uppercase tracking-widest">Security Alert</span>
+                            <h4 class="font-extrabold text-sm text-white truncate mt-0.5" id="alert-banner-msg">Liveness Check Required</h4>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- Footer Status Bar -->
+                <div class="mt-3 px-2 flex items-center justify-between text-xs text-slate-400">
+                    <span id="kiosk-status-text">Status: Camera Idle</span>
+                    <span class="font-mono text-[11px] text-slate-500">Pipeline: MediaPipe 1404-D + ONNX MobileFaceNet</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- RIGHT COLUMN: Live Occupancy Progress Gauge & QR Fallback Card (5 cols) -->
+        <div class="lg:col-span-5 flex flex-col gap-6">
+
+            <!-- STAT 1: Live Seat Occupancy Gauge -->
+            <div class="bg-[#121826] rounded-3xl border border-slate-800 p-6 shadow-2xl">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center gap-2">
+                        <i class="bi bi-bus-front-fill text-amber-400"></i>
+                        <span class="text-xs font-black text-slate-300 uppercase tracking-wider">Live Bus Occupancy</span>
+                    </div>
+                    <span id="occ-pct-badge" class="px-2.5 py-1 rounded-full text-xs font-black bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono">
+                        0%
+                    </span>
+                </div>
+
+                <div class="mb-3">
+                    <div class="flex items-baseline justify-between mb-1">
+                        <h2 id="occ-seats-count" class="text-3xl font-black text-white font-mono">0 / 40</h2>
+                        <span class="text-xs text-slate-400 font-semibold uppercase tracking-wider">Available Seats</span>
+                    </div>
+                    <p class="text-xs text-slate-400">Today's unique boarded passengers</p>
+                </div>
+
+                <!-- Progress Bar Container -->
+                <div class="w-full bg-slate-800/80 rounded-full h-3 overflow-hidden p-0.5 border border-slate-700/50">
+                    <div id="occ-progress-bar" class="bg-emerald-500 h-full rounded-full transition-all duration-500" style="width: 0%;"></div>
+                </div>
+            </div>
+
+            <!-- STAT 2: Fallback QR Code Card -->
+            <div class="bg-[#121826] rounded-3xl border border-slate-800 p-6 shadow-2xl text-center flex flex-col items-center">
+                <div class="mb-4">
+                    <span class="px-3 py-1 rounded-full text-[10px] font-black bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 uppercase tracking-widest">
+                        Fallback Mode
+                    </span>
+                    <h3 class="text-base font-extrabold text-white uppercase tracking-tight mt-2">Dynamic QR Boarding Card</h3>
+                    <p class="text-xs text-slate-400 mt-1">If face recognition is un-enrolled, scan your student QR code below</p>
+                </div>
+
+                <!-- QR Display Container -->
+                <div class="bg-white p-4 rounded-2xl shadow-xl border border-slate-700 my-2">
+                    <div id="kiosk-qrcode" class="flex items-center justify-center min-h-[160px] min-w-[160px]"></div>
+                </div>
+
+                <div class="mt-4 flex items-center gap-2 text-xs text-slate-400 font-mono">
+                    <i class="bi bi-arrow-repeat text-indigo-400 animate-spin"></i>
+                    <span>Rotates automatically every 10s</span>
+                </div>
+            </div>
+
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-slate-800/80 py-4 px-6 text-center text-xs text-slate-500 bg-[#090d16]">
+        VETIAS SmartBus AI &bull; IoT Edge Entrance Kiosk System &bull; Version 3.2
+    </footer>
+
+    <!-- Kiosk Script -->
+    <script>
+        const busNo = document.body.dataset.busNo || 'Bus-10';
+        let isProcessing = false;
+        let scanInterval = None;
+        let lastBbox = null;
+
+        // Digital Clock
+        function updateClock() {
+            const now = new Date();
+            document.getElementById('digital-clock').textContent = now.toLocaleTimeString();
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        // --- WEB AUDIO API CHIMES (No External Audio Files) ---
+        let audioCtx = null;
+        function getAudioContext() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+            return audioCtx;
+        }
+
+        // Web Audio API: Two-Tone Success Chime (C5 523Hz -> E5 659Hz)
+        function playSuccessChime() {
+            try {
+                const ctx = getAudioContext();
+                const now = ctx.currentTime;
+
+                const osc1 = ctx.createOscillator();
+                const gain1 = ctx.createGain();
+                osc1.type = 'sine';
+                osc1.frequency.setValueAtTime(523.25, now); // C5
+                gain1.gain.setValueAtTime(0.15, now);
+                gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+                osc1.connect(gain1);
+                gain1.connect(ctx.destination);
+                osc1.start(now);
+                osc1.stop(now + 0.25);
+
+                const osc2 = ctx.createOscillator();
+                const gain2 = ctx.createGain();
+                osc2.type = 'sine';
+                osc2.frequency.setValueAtTime(659.25, now + 0.15); // E5
+                gain2.gain.setValueAtTime(0.18, now + 0.15);
+                gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+                osc2.connect(gain2);
+                gain2.connect(ctx.destination);
+                osc2.start(now + 0.15);
+                osc2.stop(now + 0.5);
+            } catch (e) {
+                console.log('Audio Context Error:', e);
+            }
+        }
+
+        // Web Audio API: Alert Tone (A3 220Hz Sawtooth/Sine)
+        function playAlertChime() {
+            try {
+                const ctx = getAudioContext();
+                const now = ctx.currentTime;
+
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(220, now); // A3
+                gain.gain.setValueAtTime(0.12, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.4);
+            } catch (e) {
+                console.log('Audio Context Error:', e);
+            }
+        }
+
+        // --- BUS OCCUPANCY FETCH & UPDATE ---
+        async function updateOccupancy() {
+            try {
+                const res = await fetch(`/api/bus-occupancy/${encodeURIComponent(busNo)}`);
+                const data = await res.json();
+
+                const countEl = document.getElementById('occ-seats-count');
+                const pctEl = document.getElementById('occ-pct-badge');
+                const barEl = document.getElementById('occ-progress-bar');
+
+                const count = data.occupied_count || 0;
+                const total = data.total_capacity || 40;
+                const pct = data.occupancy_pct || 0;
+
+                countEl.textContent = `${count} / ${total}`;
+                pctEl.textContent = `${pct}%`;
+                barEl.style.width = `${pct}%`;
+
+                // Color Coding: <75% Emerald, 75-90% Amber, >90% Red
+                barEl.className = 'h-full rounded-full transition-all duration-500 ';
+                pctEl.className = 'px-2.5 py-1 rounded-full text-xs font-black font-mono ';
+                if (pct >= 90) {
+                    barEl.classList.add('bg-red-500');
+                    pctEl.classList.add('bg-red-500/10', 'text-red-400', 'border', 'border-red-500/20');
+                } else if (pct >= 75) {
+                    barEl.classList.add('bg-amber-500');
+                    pctEl.classList.add('bg-amber-500/10', 'text-amber-400', 'border', 'border-amber-500/20');
+                } else {
+                    barEl.classList.add('bg-emerald-500');
+                    pctEl.classList.add('bg-emerald-500/10', 'text-emerald-400', 'border', 'border-emerald-500/20');
+                }
+            } catch (e) {
+                console.log('Occupancy Fetch Error:', e);
+            }
+        }
+        setInterval(updateOccupancy, 10000);
+        updateOccupancy();
+
+        // --- QR CODE GENERATION ---
+        let qrcodeObj = null;
+        function updateKioskQR() {
+            const container = document.getElementById('kiosk-qrcode');
+            if (!container) return;
+            container.innerHTML = '';
+            const timestamp = Math.floor(Date.now() / 1000);
+            const payload = `${busNo}_${timestamp}`;
+            qrcodeObj = new QRCode(container, {
+                text: payload,
+                width: 160,
+                height: 160,
+                colorDark: "#090d16",
+                colorLight: "#ffffff",
+                correctLevel: QRCode.CorrectLevel.H
+            });
+        }
+        updateKioskQR();
+        setInterval(updateKioskQR, 10000);
+
+        // --- WEBCAM & CANVAS BOUNDING BOX OVERLAY ---
+        const video = document.getElementById('kiosk-video');
+        const canvas = document.getElementById('kiosk-canvas');
+        const ctx = canvas.getContext('2d');
+
+        async function startKioskCamera() {
+            try {
+                document.getElementById('kiosk-idle').style.display = 'none';
+                document.getElementById('kiosk-status-text').textContent = 'Status: Camera Active & Scanning...';
+
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: 640, height: 480, facingMode: 'user' }
+                });
+                video.srcObject = stream;
+                video.play();
+
+                requestAnimationFrame(drawLoop);
+                setInterval(captureAndRecognize, 1500);
+            } catch (e) {
+                alert('Camera Access Error: ' + e.message);
+                document.getElementById('kiosk-idle').style.display = 'flex';
+            }
+        }
+
+        function drawLoop() {
+            if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                canvas.width = video.videoWidth || 640;
+                canvas.height = video.videoHeight || 480;
+
+                ctx.save();
+                // Mirror image
+                ctx.translate(canvas.width, 0);
+                ctx.scale(-1, 1);
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                ctx.restore();
+
+                // Draw bounding box if returned
+                if (lastBbox) {
+                    const [rx, ry, rw, rh] = lastBbox;
+                    // Account for horizontal mirror
+                    const x = (1.0 - rx - rw) * canvas.width;
+                    const y = ry * canvas.height;
+                    const w = rw * canvas.width;
+                    const h = rh * canvas.height;
+
+                    ctx.strokeStyle = '#10b981';
+                    ctx.lineWidth = 3;
+                    ctx.shadowColor = '#10b981';
+                    ctx.shadowBlur = 12;
+
+                    // Draw rounded rect corner brackets
+                    const cornerLen = Math.min(w, h) * 0.25;
+                    ctx.beginPath();
+                    // Top Left
+                    ctx.moveTo(x, y + cornerLen); ctx.lineTo(x, y); ctx.lineTo(x + cornerLen, y);
+                    // Top Right
+                    ctx.moveTo(x + w - cornerLen, y); ctx.lineTo(x + w, y); ctx.lineTo(x + w, y + cornerLen);
+                    // Bottom Right
+                    ctx.moveTo(x + w, y + h - cornerLen); ctx.lineTo(x + w, y + h); ctx.lineTo(x + w - cornerLen, y + h);
+                    // Bottom Left
+                    ctx.moveTo(x + cornerLen, y + h); ctx.lineTo(x, y + h); ctx.lineTo(x, y + h - cornerLen);
+                    ctx.stroke();
+                }
+            }
+            requestAnimationFrame(drawLoop);
+        }
+
+        async function captureAndRecognize() {
+            if (isProcessing || video.readyState !== video.HAVE_ENOUGH_DATA) return;
+            isProcessing = true;
+
+            try {
+                const tmpCanvas = document.createElement('canvas');
+                tmpCanvas.width = canvas.width;
+                tmpCanvas.height = canvas.height;
+                const tmpCtx = tmpCanvas.getContext('2d');
+                tmpCtx.drawImage(video, 0, 0);
+
+                const dataUri = tmpCanvas.toDataURL('image/jpeg', 0.85);
+
+                const res = await fetch('/api/mark-attendance-face', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application.json' },
+                    body: JSON.stringify({
+                        image_data: dataUri,
+                        bus_no: busNo,
+                        liveness_verified: true
+                    })
+                });
+
+                const result = await res.json();
+                lastBbox = result.bbox || null;
+
+                if (result.status === 'success' || result.status === 'already_marked') {
+                    playSuccessChime();
+                    showMatchBanner(result.student_name, result.confidence || 100);
+                    updateOccupancy();
+                } else if (result.status === 'error' && result.message.includes('Liveness')) {
+                    playAlertChime();
+                    showAlertBanner(result.message);
+                }
+            } catch (e) {
+                console.log('Scan error:', e);
+            } finally {
+                isProcessing = false;
+            }
+        }
+
+        function showMatchBanner(name, confidence) {
+            const banner = document.getElementById('kiosk-match-banner');
+            document.getElementById('banner-name').textContent = name;
+            document.getElementById('banner-confidence').textContent = `${confidence}% Match`;
+            document.getElementById('banner-time').textContent = `Boarded: ${new Date().toLocaleTimeString()}`;
+
+            banner.classList.remove('opacity-0', 'pointer-events-none', 'translate-y-4');
+            banner.classList.add('opacity-100', 'translate-y-0');
+
+            setTimeout(() => {
+                banner.classList.add('opacity-0', 'pointer-events-none', 'translate-y-4');
+                banner.classList.remove('opacity-100', 'translate-y-0');
+                lastBbox = null;
+            }, 4000);
+        }
+
+        function showAlertBanner(msg) {
+            const banner = document.getElementById('kiosk-alert-banner');
+            document.getElementById('alert-banner-msg').textContent = msg;
+
+            banner.classList.remove('opacity-0', 'pointer-events-none', 'translate-y-4');
+            banner.classList.add('opacity-100', 'translate-y-0');
+
+            setTimeout(() => {
+                banner.classList.add('opacity-0', 'pointer-events-none', 'translate-y-4');
+                banner.classList.remove('opacity-100', 'translate-y-0');
+            }, 4000);
+        }
+    </script>
+</body>
+
+</html>

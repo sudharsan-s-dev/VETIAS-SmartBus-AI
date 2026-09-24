@@ -162,11 +162,29 @@ def extract_deep_embedding_from_landmarks(cv2_bgr_img, landmarks):
     norm = np.linalg.norm(vec) + 1e-6
     return (vec / norm).tolist()
 
-def process_image_for_embedding(cv2_img):
+def extract_bbox_from_landmarks(cv2_img, landmarks):
+    h, w, _ = cv2_img.shape
+    xs = [lm.x * w if hasattr(lm, 'x') else lm[0] * w for lm in landmarks]
+    ys = [lm.y * h if hasattr(lm, 'y') else lm[1] * h for lm in landmarks]
+    
+    xmin, xmax = int(min(xs)), int(max(xs))
+    ymin, ymax = int(min(ys)), int(max(ys))
+    
+    pw = int((xmax - xmin) * 0.15)
+    ph = int((ymax - ymin) * 0.15)
+    
+    xmin = max(0, xmin - pw)
+    ymin = max(0, ymin - ph)
+    xmax = min(w, xmax + pw)
+    ymax = min(h, ymax + ph)
+    
+    return [round(xmin / w, 4), round(ymin / h, 4), round((xmax - xmin) / w, 4), round((ymax - ymin) / h, 4)]
+
+def process_image_for_embedding(cv2_img, return_bbox=False):
     """
     Detects faces in OpenCV BGR image using MediaPipe, crops/aligns, and extracts 512-D ONNX embedding.
     Returns:
-       (status_code, result_data)
+       (status_code, result_data) or (status_code, result_data, bbox)
        status_code: 'SUCCESS', 'NO_FACE', or 'MULTIPLE_FACES'
        result_data: list float embedding vector if SUCCESS, else error string
     """
@@ -174,12 +192,15 @@ def process_image_for_embedding(cv2_img):
     face_list = detector(cv2_img)
 
     if len(face_list) == 0:
-        return 'NO_FACE', 'No face detected in the photo.'
+        return ('NO_FACE', 'No face detected in the photo.', None) if return_bbox else ('NO_FACE', 'No face detected in the photo.')
     elif len(face_list) > 1:
-        return 'MULTIPLE_FACES', 'Multiple faces detected. Please ensure only one face is in the photo.'
+        return ('MULTIPLE_FACES', 'Multiple faces detected. Please ensure only one face is in the photo.', None) if return_bbox else ('MULTIPLE_FACES', 'Multiple faces detected. Please ensure only one face is in the photo.')
 
     landmarks = face_list[0]
     embedding = extract_deep_embedding_from_landmarks(cv2_img, landmarks)
+    if return_bbox:
+        bbox = extract_bbox_from_landmarks(cv2_img, landmarks)
+        return 'SUCCESS', embedding, bbox
     return 'SUCCESS', embedding
 
 def calculate_ear_from_landmarks(landmarks, width, height):
