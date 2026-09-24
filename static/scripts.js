@@ -130,6 +130,7 @@ const DriverApp = {
             fetch('/api/bus-manifest').then(r => r.json()).then(d => {
                 const countEl = document.getElementById('student-count');
                 if (countEl) countEl.innerText = `${d.count} / 40`;
+                if (typeof updateBusOccupancy === 'function') updateBusOccupancy();
 
                 const list = document.getElementById('manifest-list');
                 if (!list) return;
