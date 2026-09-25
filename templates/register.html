@@ -394,14 +394,113 @@
         </div>
 
         <!-- Footer -->
-        <div class="text-center py-10 text-slate-400 text-[10px] font-bold uppercase tracking-[0.2em]">
+        <div class="text-center py-8 text-slate-400 text-[10px] font-bold uppercase tracking-[0.2em]">
             <p>© <span id="year"></span> VET IAS COLLEGE BUS MANAGEMENT SYSTEM | Security Protocol V4.2.0</p>
+            <div class="mt-4">
+                <button type="button" onclick="openStaffGateModal()" class="text-xs text-slate-400 hover:text-brand-deep font-semibold tracking-normal transition-all inline-flex items-center gap-1.5 opacity-60 hover:opacity-100 cursor-pointer">
+                    <i class="bi bi-shield-lock-fill text-brand-orange"></i> Authorized Staff & Transport Portal Access
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- HIDDEN STAFF & DRIVER REGISTRATION GATE MODAL -->
+    <div id="staffGateModal" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 opacity-0 pointer-events-none transition-all duration-300">
+        <div class="bg-white rounded-3xl border border-slate-100 shadow-2xl max-w-md w-full p-8 relative">
+            <button type="button" onclick="closeStaffGateModal()" class="absolute top-6 right-6 text-slate-400 hover:text-slate-600 text-xl focus:outline-none">
+                <i class="bi bi-x-circle-fill"></i>
+            </button>
+            
+            <div class="text-center mb-6">
+                <div class="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center text-xl shadow-inner border border-amber-100 mx-auto mb-3">
+                    <i class="bi bi-key-fill"></i>
+                </div>
+                <h3 class="text-xl font-black text-brand-dark uppercase tracking-tight mb-1">Staff Passcode Verification</h3>
+                <p class="text-slate-500 font-medium text-xs">Enter your preset staff authorization code to access Driver or Admin registration.</p>
+            </div>
+
+            <div id="staffGateError" class="hidden bg-red-50 border-l-4 border-red-500 p-3 rounded-lg mb-4 text-xs font-semibold text-red-700 flex items-center gap-2">
+                <i class="bi bi-exclamation-triangle-fill text-red-500"></i>
+                <span id="staffGateErrorMsg">Invalid Passcode</span>
+            </div>
+
+            <form onsubmit="submitStaffGatePasscode(event)" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-bold text-slate-600 uppercase mb-2" for="staff_passcode">Preset Passcode *</label>
+                    <div class="relative">
+                        <i class="bi bi-lock-fill absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                        <input type="password" id="staff_passcode" required placeholder="Enter Driver or Admin Passcode"
+                            class="w-full bg-slate-50 border border-slate-200 rounded-xl pl-11 pr-4 py-3 text-slate-800 text-sm font-medium focus:ring-2 focus:ring-brand-deep outline-none">
+                    </div>
+                    <p class="text-[10px] text-slate-400 mt-1 italic text-center">Presets: <strong>DRIVER2026</strong> for Driver | <strong>ADMIN2026</strong> for Admin</p>
+                </div>
+
+                <div class="flex items-center gap-3 pt-2">
+                    <button type="button" onclick="closeStaffGateModal()" class="flex-1 py-3 px-4 border border-slate-200 text-slate-600 font-bold rounded-xl text-xs hover:bg-slate-50 transition-all">
+                        Cancel
+                    </button>
+                    <button type="submit" id="unlockGateBtn" class="flex-1 py-3 px-4 bg-brand-deep text-white font-bold rounded-xl text-xs hover:bg-brand-dark transition-all flex items-center justify-center gap-2 shadow-md">
+                        <i class="bi bi-unlock-fill"></i> Unlock Gate
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 
     <!-- Scripts -->
     <script>
         document.getElementById('year').textContent = new Date().getFullYear();
+
+        function openStaffGateModal() {
+            const modal = document.getElementById('staffGateModal');
+            const err = document.getElementById('staffGateError');
+            if (err) err.classList.add('hidden');
+            document.getElementById('staff_passcode').value = '';
+            modal.classList.remove('opacity-0', 'pointer-events-none');
+            modal.classList.add('opacity-100');
+            setTimeout(() => document.getElementById('staff_passcode').focus(), 100);
+        }
+
+        function closeStaffGateModal() {
+            const modal = document.getElementById('staffGateModal');
+            modal.classList.remove('opacity-100');
+            modal.classList.add('opacity-0', 'pointer-events-none');
+        }
+
+        async function submitStaffGatePasscode(e) {
+            e.preventDefault();
+            const code = document.getElementById('staff_passcode').value.trim();
+            const errBox = document.getElementById('staffGateError');
+            const errMsg = document.getElementById('staffGateErrorMsg');
+            const btn = document.getElementById('unlockGateBtn');
+
+            if (!code) return;
+
+            btn.disabled = true;
+            btn.innerHTML = `<i class="bi bi-hourglass-split animate-spin"></i> Verifying...`;
+
+            try {
+                const res = await fetch('/api/verify-staff-passcode', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ passcode: code })
+                });
+                const data = await res.json();
+                if (res.ok && data.status === 'success') {
+                    window.location.href = data.redirect;
+                } else {
+                    errMsg.innerText = data.message || 'Invalid Staff Passcode';
+                    errBox.classList.remove('hidden');
+                    btn.disabled = false;
+                    btn.innerHTML = `<i class="bi bi-unlock-fill"></i> Unlock Gate`;
+                }
+            } catch (err) {
+                errMsg.innerText = 'Server verification error.';
+                errBox.classList.remove('hidden');
+                btn.disabled = false;
+                btn.innerHTML = `<i class="bi bi-unlock-fill"></i> Unlock Gate`;
+            }
+        }
 
         const form = document.getElementById('registerForm');
         const submitBtn = document.getElementById('submitBtn');

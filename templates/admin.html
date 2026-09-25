@@ -140,6 +140,10 @@
                     <i class="bi bi-grid-1x2-fill text-lg"></i>
                     <span>Summary</span>
                 </button>
+                <button class="nav-btn" onclick="showSection('fleet')" data-section="fleet">
+                    <i class="bi bi-bus-front-fill text-lg"></i>
+                    <span>Fleet Operations</span>
+                </button>
                 <button class="nav-btn" onclick="showSection('students')" data-section="students">
                     <i class="bi bi-mortarboard-fill text-lg"></i>
                     <span>Students</span>
@@ -184,6 +188,11 @@
                 class="mobile-nav-btn w-full text-slate-600 text-lg font-bold flex items-center gap-4 px-6 py-4 rounded-xl hover:bg-brand-deep/5 hover:text-brand-deep transition-colors focus:outline-none"
                 onclick="showSection('dashboard')" data-section="dashboard">
                 <i class="bi bi-grid-1x2-fill"></i> <span>Summary</span>
+            </button>
+            <button
+                class="mobile-nav-btn w-full text-slate-600 text-lg font-bold flex items-center gap-4 px-6 py-4 rounded-xl hover:bg-brand-deep/5 hover:text-brand-deep transition-colors focus:outline-none"
+                onclick="showSection('fleet')" data-section="fleet">
+                <i class="bi bi-bus-front-fill"></i> <span>Fleet Operations</span>
             </button>
             <button
                 class="mobile-nav-btn w-full text-slate-600 text-lg font-bold flex items-center gap-4 px-6 py-4 rounded-xl hover:bg-brand-deep/5 hover:text-brand-deep transition-colors focus:outline-none"
@@ -304,30 +313,6 @@
                 </div>
             </div>
 
-            <!-- Fleet GPS Map Card -->
-            <div class="bg-white rounded-3xl border border-slate-100 p-6 shadow-soft mb-12">
-                <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
-                    <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 rounded-xl bg-brand-deep text-white flex items-center justify-center text-lg shadow-sm">
-                            <i class="bi bi-map-fill"></i>
-                        </div>
-                        <div>
-                            <h3 class="text-lg font-extrabold text-brand-dark uppercase tracking-tight">Live Fleet GPS Map</h3>
-                            <p class="text-xs text-slate-500 font-medium">Real-time bus locations, routes & passenger counts</p>
-                        </div>
-                    </div>
-                    <div class="flex items-center gap-3">
-                        <span id="admin-sim-badge" class="px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-600 border border-slate-200 flex items-center gap-1.5">
-                            <span id="admin-sim-dot" class="w-2 h-2 rounded-full bg-slate-400"></span> <span id="admin-sim-text">Simulation Paused</span>
-                        </span>
-                        <button id="admin-sim-toggle-btn" onclick="toggleSimFromAdmin()" class="px-4 py-2 rounded-xl bg-brand-deep text-white hover:bg-brand-dark font-bold text-xs uppercase tracking-wider transition-all flex items-center gap-2 shadow-sm">
-                            <i id="admin-sim-icon" class="bi bi-play-fill text-base"></i> <span id="admin-sim-btn-text">Start GPS Sim</span>
-                        </button>
-                    </div>
-                </div>
-                <div id="admin-fleet-map" class="w-full h-[380px] rounded-2xl border border-slate-200 z-10 overflow-hidden"></div>
-            </div>
-
             <!-- Recent Feedback -->
             <div class="bg-white rounded-2xl border border-slate-100 shadow-soft overflow-hidden">
                 <div class="p-6 border-b border-slate-50 flex items-center justify-between bg-slate-50/50">
@@ -373,6 +358,229 @@
                             {% endif %}
                         </tbody>
                     </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- FLEET OPERATIONS SECTION -->
+        <section id="fleet" class="hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div class="mb-10">
+                <h2 class="text-3xl font-extrabold text-brand-dark tracking-tighter uppercase leading-none text-brand-deep flex items-center gap-3">
+                    <i class="bi bi-bus-front-fill"></i> Fleet Operations & Live Control
+                </h2>
+                <p class="text-slate-500 font-medium mt-2">Real-time GPS tracking, fleet maps, per-bus drill-down inspection, and route telemetry.</p>
+            </div>
+
+            <!-- Fleet GPS Map Card -->
+            <div class="bg-white rounded-3xl border border-slate-100 p-6 shadow-soft mb-12">
+                <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-xl bg-brand-deep text-white flex items-center justify-center text-lg shadow-sm">
+                            <i class="bi bi-map-fill"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-extrabold text-brand-dark uppercase tracking-tight">Live Fleet GPS Map</h3>
+                            <p class="text-xs text-slate-500 font-medium">Real-time bus locations, routes & passenger counts</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <span id="admin-sim-badge" class="px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-600 border border-slate-200 flex items-center gap-1.5">
+                            <span id="admin-sim-dot" class="w-2 h-2 rounded-full bg-slate-400"></span> <span id="admin-sim-text">Simulation Paused</span>
+                        </span>
+                        <button id="admin-sim-toggle-btn" onclick="toggleSimFromAdmin()" class="px-4 py-2 rounded-xl bg-brand-deep text-white hover:bg-brand-dark font-bold text-xs uppercase tracking-wider transition-all flex items-center gap-2 shadow-sm">
+                            <i id="admin-sim-icon" class="bi bi-play-fill text-base"></i> <span id="admin-sim-btn-text">Start GPS Sim</span>
+                        </button>
+                    </div>
+                </div>
+                <div id="admin-fleet-map" class="w-full h-[380px] rounded-2xl border border-slate-200 z-10 overflow-hidden"></div>
+            </div>
+
+            <!-- PER-BUS DRILL-DOWN DASHBOARD -->
+            <div class="mb-12">
+                <div class="flex items-center justify-between mb-4">
+                    <div>
+                        <h3 class="text-xl font-extrabold text-brand-dark uppercase tracking-tight flex items-center gap-2">
+                            <i class="bi bi-bus-front text-brand-deep"></i> Active Fleet Buses & Drill-Down
+                        </h3>
+                        <p class="text-xs text-slate-500 font-medium">Select a bus card to inspect driver info, single-bus map, live occupancy, and bus-filtered boardings.</p>
+                    </div>
+                </div>
+
+                <!-- Bus Selector Grid Cards -->
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8" id="bus-card-grid">
+                    <!-- Bus-10 Card -->
+                    <div id="bus-card-Bus-10" onclick="selectBusDrilldown('Bus-10')" class="bus-drill-card cursor-pointer bg-white p-6 rounded-2xl border-2 border-brand-deep shadow-lg hover:shadow-xl transition-all duration-300">
+                        <div class="flex justify-between items-start mb-3">
+                            <div>
+                                <span class="px-2.5 py-1 rounded-lg bg-brand-deep text-white font-black text-xs uppercase">Bus-10</span>
+                                <h4 class="text-sm font-bold text-slate-700 mt-2">Erode Town Route</h4>
+                            </div>
+                            <span id="bus-card-status-Bus-10" class="px-2 py-0.5 rounded text-[10px] font-extrabold bg-emerald-50 text-emerald-600 border border-emerald-200">Active</span>
+                        </div>
+                        <div class="mt-4">
+                            <div class="flex justify-between text-xs font-bold mb-1">
+                                <span class="text-slate-500">Live Occupancy</span>
+                                <span id="bus-card-occ-text-Bus-10" class="text-brand-deep font-black">0 / 40</span>
+                            </div>
+                            <div class="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                                <div id="bus-card-occ-bar-Bus-10" class="bg-emerald-500 h-2 rounded-full transition-all duration-500" style="width: 0%"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Bus-06 Card -->
+                    <div id="bus-card-Bus-06" onclick="selectBusDrilldown('Bus-06')" class="bus-drill-card cursor-pointer bg-white p-6 rounded-2xl border border-slate-200 shadow-soft hover:border-brand-deep hover:shadow-lg transition-all duration-300">
+                        <div class="flex justify-between items-start mb-3">
+                            <div>
+                                <span class="px-2.5 py-1 rounded-lg bg-slate-700 text-white font-black text-xs uppercase">Bus-06</span>
+                                <h4 class="text-sm font-bold text-slate-700 mt-2">Perundurai Route</h4>
+                            </div>
+                            <span id="bus-card-status-Bus-06" class="px-2 py-0.5 rounded text-[10px] font-extrabold bg-emerald-50 text-emerald-600 border border-emerald-200">Active</span>
+                        </div>
+                        <div class="mt-4">
+                            <div class="flex justify-between text-xs font-bold mb-1">
+                                <span class="text-slate-500">Live Occupancy</span>
+                                <span id="bus-card-occ-text-Bus-06" class="text-brand-deep font-black">0 / 40</span>
+                            </div>
+                            <div class="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                                <div id="bus-card-occ-bar-Bus-06" class="bg-emerald-500 h-2 rounded-full transition-all duration-500" style="width: 0%"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Bus-01 Card -->
+                    <div id="bus-card-Bus-01" onclick="selectBusDrilldown('Bus-01')" class="bus-drill-card cursor-pointer bg-white p-6 rounded-2xl border border-slate-200 shadow-soft hover:border-brand-deep hover:shadow-lg transition-all duration-300">
+                        <div class="flex justify-between items-start mb-3">
+                            <div>
+                                <span class="px-2.5 py-1 rounded-lg bg-slate-700 text-white font-black text-xs uppercase">Bus-01</span>
+                                <h4 class="text-sm font-bold text-slate-700 mt-2">Bhavani Route</h4>
+                            </div>
+                            <span id="bus-card-status-Bus-01" class="px-2 py-0.5 rounded text-[10px] font-extrabold bg-emerald-50 text-emerald-600 border border-emerald-200">Active</span>
+                        </div>
+                        <div class="mt-4">
+                            <div class="flex justify-between text-xs font-bold mb-1">
+                                <span class="text-slate-500">Live Occupancy</span>
+                                <span id="bus-card-occ-text-Bus-01" class="text-brand-deep font-black">0 / 40</span>
+                            </div>
+                            <div class="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                                <div id="bus-card-occ-bar-Bus-01" class="bg-emerald-500 h-2 rounded-full transition-all duration-500" style="width: 0%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bus Drill-Down Detail Panel -->
+                <div class="bg-white rounded-3xl border border-slate-100 p-6 md:p-8 shadow-soft">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-4 mb-6">
+                        <div class="flex items-center gap-3">
+                            <span id="drilldown-bus-badge" class="px-3 py-1 rounded-xl bg-brand-deep text-white font-black text-sm uppercase">Bus-10</span>
+                            <h3 id="drilldown-route-name" class="text-xl font-extrabold text-brand-dark">Erode Town Route</h3>
+                        </div>
+                        <span id="drilldown-ping-time" class="text-xs font-bold text-slate-400 italic">Last Ping: Just now</span>
+                    </div>
+
+                    <!-- 2-Column Grid -->
+                    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 mb-8">
+                        <!-- LEFT COLUMN: Driver Details -->
+                        <div class="lg:col-span-4 bg-slate-50/70 p-6 rounded-2xl border border-slate-200/60 flex flex-col justify-between">
+                            <div>
+                                <h4 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                                    <i class="bi bi-person-badge-fill text-brand-deep"></i> Assigned Driver Profile
+                                </h4>
+                                <div class="flex items-center gap-4 mb-6">
+                                    <div class="w-14 h-14 rounded-2xl bg-brand-deep text-white flex items-center justify-center font-black text-xl shadow-md">
+                                        <i class="bi bi-person-fill"></i>
+                                    </div>
+                                    <div>
+                                        <h5 id="drilldown-driver-name" class="text-lg font-bold text-slate-800">K. Murugan</h5>
+                                        <span id="drilldown-driver-empid" class="text-xs font-semibold text-slate-500">ID: EMP-BUS10</span>
+                                    </div>
+                                </div>
+                                <div class="space-y-3 text-xs">
+                                    <div class="flex justify-between py-2 border-b border-slate-200/50">
+                                        <span class="text-slate-500 font-medium">Contact Phone</span>
+                                        <span id="drilldown-driver-phone" class="font-bold text-slate-700">+91 98427 12345</span>
+                                    </div>
+                                    <div class="flex justify-between py-2 border-b border-slate-200/50">
+                                        <span class="text-slate-500 font-medium">Duty Status</span>
+                                        <span id="drilldown-driver-status" class="px-2 py-0.5 rounded text-[10px] font-black bg-emerald-50 text-emerald-600 border border-emerald-200 uppercase">On-Duty</span>
+                                    </div>
+                                    <div class="flex justify-between py-2 border-b border-slate-200/50">
+                                        <span class="text-slate-500 font-medium">Assigned Bus</span>
+                                        <span id="drilldown-driver-busno" class="font-bold text-brand-deep">Bus-10</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- RIGHT COLUMN: Bus Details & Single-Bus Leaflet Map -->
+                        <div class="lg:col-span-8 flex flex-col justify-between">
+                            <div>
+                                <div class="flex items-center justify-between mb-2">
+                                    <h4 class="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                                        <i class="bi bi-geo-alt-fill text-brand-deep"></i> Single-Bus Live Route Map
+                                    </h4>
+                                    <div class="flex items-center gap-2">
+                                        <span id="drilldown-occ-text" class="text-xs font-extrabold text-brand-deep">0 / 40 seats</span>
+                                        <span id="drilldown-occ-pct" class="text-[10px] font-black bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded">0%</span>
+                                    </div>
+                                </div>
+                                <div class="w-full bg-slate-100 rounded-full h-2 mb-4 overflow-hidden">
+                                    <div id="drilldown-occ-bar" class="bg-emerald-500 h-2 rounded-full transition-all duration-500" style="width: 0%"></div>
+                                </div>
+                            </div>
+
+                            <!-- Single-Bus Scoped Leaflet Map -->
+                            <div id="drilldown-bus-map" class="w-full h-[280px] rounded-2xl border border-slate-200 z-10 overflow-hidden"></div>
+                        </div>
+                    </div>
+
+                    <!-- BELOW: Today's Boardings & Security Alerts for THIS Bus -->
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                        <!-- Left Table: Bus Today's Boardings -->
+                        <div class="bg-slate-50/50 p-6 rounded-2xl border border-slate-200/60">
+                            <h4 class="text-xs font-black text-slate-500 uppercase tracking-widest mb-4 flex items-center justify-between">
+                                <span><i class="bi bi-person-check-fill text-emerald-600"></i> Today's Boardings (<span id="drilldown-bus-no-boardings">Bus-10</span>)</span>
+                                <span id="drilldown-boardings-count" class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">0 Boarded</span>
+                            </h4>
+                            <div class="max-h-60 overflow-y-auto">
+                                <table class="w-full text-left text-xs">
+                                    <thead class="text-[10px] text-slate-400 uppercase bg-slate-100/70 sticky top-0">
+                                        <tr>
+                                            <th class="py-2 px-3">Student Name</th>
+                                            <th class="py-2 px-3">Time</th>
+                                            <th class="py-2 px-3">Method</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="drilldown-boardings-tbody" class="divide-y divide-slate-200/40">
+                                        <tr><td colspan="3" class="py-6 text-center text-slate-400 italic">No boardings recorded today for this bus.</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Right Table: Bus Security Alerts -->
+                        <div class="bg-slate-50/50 p-6 rounded-2xl border border-slate-200/60">
+                            <h4 class="text-xs font-black text-slate-500 uppercase tracking-widest mb-4 flex items-center justify-between">
+                                <span><i class="bi bi-shield-exclamation text-amber-600"></i> Security Alerts (<span id="drilldown-bus-no-alerts">Bus-10</span>)</span>
+                                <span id="drilldown-alerts-count" class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold">0 Alerts</span>
+                            </h4>
+                            <div class="max-h-60 overflow-y-auto">
+                                <table class="w-full text-left text-xs">
+                                    <thead class="text-[10px] text-slate-400 uppercase bg-slate-100/70 sticky top-0">
+                                        <tr>
+                                            <th class="py-2 px-3">Student / Event</th>
+                                            <th class="py-2 px-3">Reason</th>
+                                            <th class="py-2 px-3">Time</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="drilldown-alerts-tbody" class="divide-y divide-slate-200/40">
+                                        <tr><td colspan="3" class="py-6 text-center text-slate-400 italic">No security alerts logged for this bus.</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </section>
@@ -899,6 +1107,12 @@
                     target.classList.remove('hidden');
                 }
 
+                // Ensure maps resize properly when switching tabs
+                setTimeout(() => {
+                    if (typeof adminMap !== 'undefined' && adminMap) adminMap.invalidateSize();
+                    if (typeof drilldownMap !== 'undefined' && drilldownMap) drilldownMap.invalidateSize();
+                }, 150);
+
                 // Ensure page scrolls back to top
                 window.scrollTo({ top: 0, behavior: 'instant' });
 
@@ -1107,9 +1321,11 @@
                         const busNo = b.bus_no;
                         const lat = b.lat;
                         const lng = b.lng;
+                        const routeColor = busNo === 'Bus-10' ? '#004d40' : (busNo === 'Bus-06' ? '#0284c7' : '#d97706');
+
                         const popupContent = `
                             <div style="font-family: sans-serif; padding: 2px;">
-                                <strong style="color: #004d40; font-size: 14px;">${busNo} - ${b.route_name}</strong><br/>
+                                <strong style="color: ${routeColor}; font-size: 14px;">${busNo} - ${b.route_name}</strong><br/>
                                 <span style="font-size: 11px; color: #666;">Driver: ${b.driver_name}</span><br/>
                                 <span style="font-size: 12px; font-weight: bold; color: #10b981;">Occupancy: ${b.occupied_count} / ${b.total_capacity} seats</span><br/>
                                 <span style="font-size: 10px; color: #999;">Last Updated: ${b.last_updated}</span>
@@ -1117,7 +1333,6 @@
                         `;
 
                         if (b.waypoints && !adminRoutePolylines[busNo]) {
-                            const routeColor = busNo === 'Bus-10' ? '#004d40' : (busNo === 'Bus-06' ? '#0284c7' : '#d97706');
                             adminRoutePolylines[busNo] = L.polyline(b.waypoints, {
                                 color: routeColor,
                                 weight: 4,
@@ -1138,15 +1353,17 @@
                             }
                         }
 
+                        const busIcon = L.divIcon({
+                            className: 'custom-bus-icon',
+                            html: `<div class="map-badge-pill" style="background-color:${routeColor}; color:white; font-weight:800; font-size:12px;">🚌 ${busNo} Live</div>`,
+                            iconSize: null,
+                            iconAnchor: null
+                        });
+
                         if (!adminBusMarkers[busNo]) {
-                            const busIcon = L.divIcon({
-                                className: 'custom-bus-icon',
-                                html: `<div class="map-badge-pill" style="background-color:#004d40; color:white; font-weight:800; font-size:12px;">🚌 ${busNo} Live</div>`,
-                                iconSize: null,
-                                iconAnchor: null
-                            });
                             adminBusMarkers[busNo] = L.marker([lat, lng], { icon: busIcon }).addTo(adminMap).bindPopup(popupContent);
                         } else {
+                            adminBusMarkers[busNo].setIcon(busIcon);
                             adminBusMarkers[busNo].setLatLng([lat, lng]);
                             adminBusMarkers[busNo].setPopupContent(popupContent);
                         }
@@ -1191,7 +1408,256 @@
 
             fetchAdminOccupancy();
             setInterval(fetchAdminOccupancy, 5000);
+
+            // --- PER-BUS DRILL-DOWN AUTO REFRESH ---
+            initDrilldownMap();
+            selectBusDrilldown('Bus-10');
+            setInterval(() => {
+                if (currentDrilldownBusNo) fetchBusDrilldownDetail(currentDrilldownBusNo);
+            }, 2000);
+
+            // --- TAB RESTORATION ON PAGE LOAD ---
+            const savedTab = localStorage.getItem('admin_last_tab') || 'dashboard';
+            showSection(savedTab);
         });
+
+        // --- STAFF REGISTRATION HANDLERS ---
+        window.setStaffRole = function(role) {
+            const roleInput = document.getElementById('staff-role-input');
+            const btnDriver = document.getElementById('role-btn-driver');
+            const btnAdmin = document.getElementById('role-btn-admin');
+            const driverPanel = document.getElementById('driver-fields-panel');
+            const adminPanel = document.getElementById('admin-fields-panel');
+
+            roleInput.value = role;
+            if (role === 'driver') {
+                btnDriver.className = "py-2.5 rounded-xl text-xs font-extrabold bg-brand-deep text-white shadow-sm transition-all flex items-center justify-center gap-2";
+                btnAdmin.className = "py-2.5 rounded-xl text-xs font-extrabold text-slate-600 hover:text-brand-deep transition-all flex items-center justify-center gap-2";
+                driverPanel.classList.remove('hidden');
+                adminPanel.classList.add('hidden');
+            } else {
+                btnAdmin.className = "py-2.5 rounded-xl text-xs font-extrabold bg-brand-deep text-white shadow-sm transition-all flex items-center justify-center gap-2";
+                btnDriver.className = "py-2.5 rounded-xl text-xs font-extrabold text-slate-600 hover:text-brand-deep transition-all flex items-center justify-center gap-2";
+                adminPanel.classList.remove('hidden');
+                driverPanel.classList.add('hidden');
+            }
+        };
+
+        window.handleCreateStaff = async function(event) {
+            event.preventDefault();
+            const role = document.getElementById('staff-role-input').value;
+            const name = document.getElementById('staff-name-input').value;
+            const password = document.getElementById('staff-password-input').value;
+
+            const payload = { role, name, password };
+
+            if (role === 'driver') {
+                payload.phone = document.getElementById('staff-phone-input').value;
+                payload.employee_id = document.getElementById('staff-empid-input').value;
+                payload.bus_no = document.getElementById('staff-busno-input').value;
+            } else {
+                payload.email = document.getElementById('staff-email-input').value;
+            }
+
+            try {
+                const res = await fetch('/admin/create-staff', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (res.ok && data.status === 'success') {
+                    showToast(data.message, 'success');
+                    setTimeout(() => location.reload(), 1000);
+                } else {
+                    showToast(data.message || 'Registration failed', 'error');
+                }
+            } catch (err) {
+                showToast('Failed to create staff account.', 'error');
+            }
+        };
+
+        // --- PER-BUS DRILL-DOWN DASHBOARD LOGIC ---
+        let drilldownMap = null;
+        let drilldownBusMarker = null;
+        let drilldownPolyline = null;
+        let drilldownStopMarkers = [];
+        let currentDrilldownBusNo = 'Bus-10';
+
+        function initDrilldownMap() {
+            const mapEl = document.getElementById('drilldown-bus-map');
+            if (!mapEl || drilldownMap) return;
+
+            drilldownMap = L.map('drilldown-bus-map').setView([11.3175, 77.6710], 12);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                attribution: '&copy; OpenStreetMap'
+            }).addTo(drilldownMap);
+
+            setTimeout(() => {
+                if (drilldownMap) drilldownMap.invalidateSize();
+            }, 300);
+        }
+
+        window.selectBusDrilldown = function(busNo) {
+            currentDrilldownBusNo = busNo;
+
+            document.querySelectorAll('.bus-drill-card').forEach(card => {
+                card.classList.remove('border-2', 'border-brand-deep', 'shadow-lg');
+                card.classList.add('border', 'border-slate-200', 'shadow-soft');
+            });
+            const activeCard = document.getElementById('bus-card-' + busNo);
+            if (activeCard) {
+                activeCard.classList.remove('border', 'border-slate-200', 'shadow-soft');
+                activeCard.classList.add('border-2', 'border-brand-deep', 'shadow-lg');
+            }
+
+            fetchBusDrilldownDetail(busNo);
+        };
+
+        function fetchBusDrilldownDetail(busNo) {
+            fetch('/api/admin/bus-detail/' + busNo)
+            .then(r => r.json())
+            .then(data => {
+                if (data.status !== 'success') return;
+
+                // Title and Ping
+                const bBadge = document.getElementById('drilldown-bus-badge');
+                if (bBadge) bBadge.innerText = data.bus_no;
+                const rName = document.getElementById('drilldown-route-name');
+                if (rName) rName.innerText = data.route_name;
+                const pTime = document.getElementById('drilldown-ping-time');
+                if (pTime) pTime.innerText = "Last Ping: " + data.location.last_ping;
+
+                // Driver Left Column
+                const dName = document.getElementById('drilldown-driver-name');
+                if (dName) dName.innerText = data.driver.name;
+                const dEmp = document.getElementById('drilldown-driver-empid');
+                if (dEmp) dEmp.innerText = "ID: " + data.driver.employee_id;
+                const dPhone = document.getElementById('drilldown-driver-phone');
+                if (dPhone) dPhone.innerText = data.driver.phone;
+                const dStatus = document.getElementById('drilldown-driver-status');
+                if (dStatus) dStatus.innerText = data.driver.status;
+                const dBusNo = document.getElementById('drilldown-driver-busno');
+                if (dBusNo) dBusNo.innerText = data.driver.assigned_bus;
+
+                // Occupancy Right Column
+                const occText = document.getElementById('drilldown-occ-text');
+                if (occText) occText.innerText = `${data.occupancy.occupied_count} / ${data.occupancy.total_capacity} seats`;
+                const occPct = document.getElementById('drilldown-occ-pct');
+                if (occPct) occPct.innerText = `${data.occupancy.occupancy_pct}%`;
+                const barEl = document.getElementById('drilldown-occ-bar');
+                if (barEl) barEl.style.width = `${data.occupancy.occupancy_pct}%`;
+
+                // Card Grid occupancy updates
+                const cardOccText = document.getElementById('bus-card-occ-text-' + data.bus_no);
+                const cardOccBar = document.getElementById('bus-card-occ-bar-' + data.bus_no);
+                if (cardOccText) cardOccText.innerText = `${data.occupancy.occupied_count} / ${data.occupancy.total_capacity}`;
+                if (cardOccBar) cardOccBar.style.width = `${data.occupancy.occupancy_pct}%`;
+
+                // Boardings Table
+                const bNoBoardings = document.getElementById('drilldown-bus-no-boardings');
+                if (bNoBoardings) bNoBoardings.innerText = data.bus_no;
+                const bCount = document.getElementById('drilldown-boardings-count');
+                if (bCount) bCount.innerText = `${data.boardings.length} Boarded`;
+                const bTbody = document.getElementById('drilldown-boardings-tbody');
+                if (bTbody) {
+                    if (data.boardings.length === 0) {
+                        bTbody.innerHTML = '<tr><td colspan="3" class="py-6 text-center text-slate-400 italic">No boardings recorded today for this bus.</td></tr>';
+                    } else {
+                        bTbody.innerHTML = data.boardings.map(b => `
+                            <tr class="hover:bg-slate-100/50 transition-colors">
+                                <td class="py-2.5 px-3 font-bold text-slate-800">${b.student_name}</td>
+                                <td class="py-2.5 px-3 text-slate-500 font-mono">${b.timestamp}</td>
+                                <td class="py-2.5 px-3">
+                                    <span class="px-2 py-0.5 rounded text-[9px] font-black ${b.method === 'FACE' ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' : 'bg-blue-50 text-blue-600 border border-blue-200'} uppercase">${b.method}</span>
+                                </td>
+                            </tr>
+                        `).join('');
+                    }
+                }
+
+                // Alerts Table
+                const aNoAlerts = document.getElementById('drilldown-bus-no-alerts');
+                if (aNoAlerts) aNoAlerts.innerText = data.bus_no;
+                const aCount = document.getElementById('drilldown-alerts-count');
+                if (aCount) aCount.innerText = `${data.alerts.length} Alerts`;
+                const aTbody = document.getElementById('drilldown-alerts-tbody');
+                if (aTbody) {
+                    if (data.alerts.length === 0) {
+                        aTbody.innerHTML = '<tr><td colspan="3" class="py-6 text-center text-slate-400 italic">No security alerts logged for this bus.</td></tr>';
+                    } else {
+                        aTbody.innerHTML = data.alerts.map(a => `
+                            <tr class="hover:bg-slate-100/50 transition-colors">
+                                <td class="py-2.5 px-3 font-bold text-slate-800">${a.student_name}</td>
+                                <td class="py-2.5 px-3 text-amber-700 font-medium">${a.reason}</td>
+                                <td class="py-2.5 px-3 text-slate-400 text-[10px]">${a.timestamp}</td>
+                            </tr>
+                        `).join('');
+                    }
+                }
+
+                // Single-Bus Map Update
+                if (!drilldownMap) {
+                    initDrilldownMap();
+                }
+
+                if (drilldownMap) {
+                    drilldownMap.setView([data.location.lat, data.location.lng], 12);
+                    drilldownMap.invalidateSize();
+
+                    if (drilldownPolyline) {
+                        drilldownMap.removeLayer(drilldownPolyline);
+                        drilldownPolyline = null;
+                    }
+                    drilldownStopMarkers.forEach(m => drilldownMap.removeLayer(m));
+                    drilldownStopMarkers = [];
+
+                    if (data.location.waypoints) {
+                        drilldownPolyline = L.polyline(data.location.waypoints, {
+                            color: data.bus_no === 'Bus-10' ? '#004d40' : (data.bus_no === 'Bus-06' ? '#0284c7' : '#d97706'),
+                            weight: 4,
+                            opacity: 0.75,
+                            dashArray: '6, 6'
+                        }).addTo(drilldownMap);
+                    }
+
+                    if (data.location.stops) {
+                        data.location.stops.forEach(st => {
+                            const stopIcon = L.divIcon({
+                                className: 'custom-admin-stop-icon',
+                                html: `<div class="map-badge-pill" style="background-color:#ff9800; color:white; font-weight:700; font-size:11px;">📍 ${st.name}</div>`,
+                                iconSize: null,
+                                iconAnchor: null
+                            });
+                            const sm = L.marker([st.lat, st.lng], { icon: stopIcon }).addTo(drilldownMap).bindPopup(`<b>${st.name} (${data.bus_no})</b>`);
+                            drilldownStopMarkers.push(sm);
+                        });
+                    }
+
+                    const popupContent = `<b>${data.bus_no} Live</b><br/>${data.route_name}<br/>Driver: ${data.driver.name}`;
+                    if (!drilldownBusMarker) {
+                        const busIcon = L.divIcon({
+                            className: 'custom-bus-icon',
+                            html: `<div class="map-badge-pill" style="background-color:#004d40; color:white; font-weight:800; font-size:12px;">🚌 ${data.bus_no} Live</div>`,
+                            iconSize: null,
+                            iconAnchor: null
+                        });
+                        drilldownBusMarker = L.marker([data.location.lat, data.location.lng], { icon: busIcon }).addTo(drilldownMap).bindPopup(popupContent);
+                    } else {
+                        const busIcon = L.divIcon({
+                            className: 'custom-bus-icon',
+                            html: `<div class="map-badge-pill" style="background-color:#004d40; color:white; font-weight:800; font-size:12px;">🚌 ${data.bus_no} Live</div>`,
+                            iconSize: null,
+                            iconAnchor: null
+                        });
+                        drilldownBusMarker.setIcon(busIcon);
+                        drilldownBusMarker.setLatLng([data.location.lat, data.location.lng]);
+                        drilldownBusMarker.setPopupContent(popupContent);
+                    }
+                }
+            }).catch(e => console.error("Drilldown fetch error:", e));
+        }
     </script>
 </body>
 

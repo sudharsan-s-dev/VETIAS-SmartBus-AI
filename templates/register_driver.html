@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description"
+        content="Driver Registration — VET IAS COLLEGE BUS MANAGEMENT SYSTEM. Register driver profile and bus route assignment.">
+    <title>Driver Registration — VET IAS COLLEGE BUS MANAGEMENT SYSTEM</title>
+    <link rel="icon" href="{{ url_for('static', filename='VET-IAS-Logo3-1.png') }}?v=4" type="image/x-icon">
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            deep: '#004d40',
+                            light: '#f1f8e9',
+                            orange: '#ff9800',
+                            gold: '#ffc107',
+                            dark: '#00241a',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Poppins', 'sans-serif'],
+                    },
+                    borderRadius: {
+                        'brand': '10px',
+                    },
+                    boxShadow: {
+                        'soft': '0 10px 30px -10px rgba(0, 77, 64, 0.1)',
+                        'glow': '0 0 20px rgba(255, 193, 7, 0.3)',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .bg-glass {
+                @apply bg-white/90 backdrop-blur-md border border-white/20;
+            }
+            .transition-standard {
+                @apply transition-all duration-300 ease-in-out;
+            }
+        }
+    </style>
+    <style>
+        @keyframes fadeInUp {
+            0% { opacity: 0; transform: translateY(20px); }
+            100% { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in-up { animation: fadeInUp 0.6s ease-out forwards; }
+
+        @keyframes headShake {
+            0% { transform: translateX(0); }
+            6.5% { transform: translateX(-6px) rotateY(-9deg); }
+            18.5% { transform: translateX(5px) rotateY(7deg); }
+            31.5% { transform: translateX(-3px) rotateY(-5deg); }
+            43.5% { transform: translateX(2px) rotateY(3deg); }
+            50% { transform: translateX(0); }
+        }
+        .animate-head-shake { animation: headShake 0.6s ease-in-out; }
+    </style>
+</head>
+
+<body class="bg-slate-50 text-slate-800 font-sans min-h-screen p-4 md:p-6 relative overflow-x-hidden">
+
+    <!-- Background Decor -->
+    <div class="fixed top-0 left-0 w-full h-full -z-10 bg-gradient-to-br from-brand-deep/5 to-transparent"></div>
+    <div class="fixed -top-24 -right-24 w-96 h-96 bg-brand-gold/10 rounded-full blur-3xl -z-10"></div>
+    <div class="fixed -bottom-24 -left-24 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl -z-10"></div>
+
+    <div class="max-w-2xl mx-auto animate-fade-in-up">
+        <!-- Logo & Header -->
+        <div class="flex flex-col md:flex-row items-center justify-between mb-8 gap-4 text-center md:text-left">
+            <div class="flex items-center gap-4">
+                <a href="/">
+                    <img src="{{ url_for('static', filename='VET-IAS-Logo3-1.png') }}" alt="VET IAS Logo"
+                        class="h-12 md:h-16 hover:scale-105 transition-standard">
+                </a>
+                <div>
+                    <h1 class="text-xl font-extrabold text-brand-deep uppercase tracking-tight leading-none">VET IAS TRANSPORT</h1>
+                    <p class="text-emerald-600 text-xs font-bold uppercase tracking-widest mt-1 flex items-center gap-1">
+                        <i class="bi bi-bus-front-fill"></i> Driver Registration Portal
+                    </p>
+                </div>
+            </div>
+            <a href="{{ url_for('login') }}"
+                class="text-brand-deep font-bold hover:text-brand-orange transition-standard flex items-center gap-2 text-sm italic">
+                <i class="bi bi-arrow-left"></i> Back to Login
+            </a>
+        </div>
+
+        <!-- Registration Form Card -->
+        <div class="bg-glass p-6 md:p-10 rounded-3xl shadow-soft border border-slate-100 relative">
+            <div class="mb-8 text-center border-b border-slate-100 pb-6">
+                <span class="px-3 py-1 bg-emerald-50 text-emerald-700 font-black text-[10px] uppercase tracking-widest rounded-full border border-emerald-200 inline-block mb-3">Authorized Personnel Only</span>
+                <h2 class="text-3xl font-extrabold text-brand-dark mb-2 uppercase tracking-tight">Driver Account Gate</h2>
+                <p class="text-slate-500 font-medium text-xs">Complete driver profile registration for vehicle operational assignment.</p>
+            </div>
+
+            <form id="driverRegisterForm" method="POST" action="{{ url_for('register_driver') }}" class="space-y-6">
+
+                {% if error %}
+                <div class="bg-red-50 border-l-4 border-red-500 p-4 rounded-xl flex items-start gap-3 animate-head-shake">
+                    <i class="bi bi-exclamation-circle-fill text-red-500 mt-0.5 text-lg"></i>
+                    <p class="text-red-700 text-xs font-semibold">{{ error }}</p>
+                </div>
+                {% endif %}
+
+                <!-- Full Name -->
+                <div>
+                    <label class="block text-xs font-bold text-slate-600 uppercase mb-2" for="fullname">Driver Full Name *</label>
+                    <div class="relative">
+                        <i class="bi bi-person absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                        <input type="text" id="fullname" name="fullname" required placeholder="e.g., K. Murugan"
+                            class="w-full bg-slate-50 border border-slate-200 rounded-xl pl-11 pr-4 py-3.5 text-slate-800 text-sm font-medium focus:ring-2 focus:ring-brand-deep focus:border-brand-deep outline-none">
+                    </div>
+                </div>
+
+                <!-- Phone & Employee ID Grid -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 uppercase mb-2" for="phone">Mobile Phone Number *</label>
+                        <div class="relative">
+                            <i class="bi bi-telephone absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                            <input type="tel" id="phone" name="phone" required placeholder="10-digit mobile number"
+                                class="w-full bg-slate-50 border border-slate-200 rounded-xl pl-11 pr-4 py-3.5 text-slate-800 text-sm font-medium focus:ring-2 focus:ring-brand-deep focus:border-brand-deep outline-none">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 uppercase mb-2" for="employee_id">Employee ID / Roll No *</label>
+                        <div class="relative">
+                            <i class="bi bi-card-heading absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                            <input type="text" id="employee_id" name="employee_id" required placeholder="e.g., EMP-10 or DRV-001"
+                                class="w-full bg-slate-50 border border-slate-200 rounded-xl pl-11 pr-4 py-3.5 text-slate-800 text-sm font-medium uppercase focus:ring-2 focus:ring-brand-deep focus:border-brand-deep outline-none">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Assigned Bus Route -->
+                <div>
+                    <label class="block text-xs font-bold text-slate-600 uppercase mb-2" for="busRoute">Assigned Bus Route *</label>
+                    <div class="relative">
+                        <i class="bi bi-bus-front absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                        <select id="busRoute" name="busRoute" required
+                            class="w-full bg-slate-50 border border-slate-200 rounded-xl pl-11 pr-10 py-3.5 text-slate-800 text-sm font-bold appearance-none focus:ring-2 focus:ring-brand-deep outline-none">
+                            <option value="Bus-10" selected>Bus-10 (Erode Town Route)</option>
+                            <option value="Bus-06">Bus-06 (Perundurai Route)</option>
+                            <option value="Bus-01">Bus-01 (Bhavani Route)</option>
+                        </select>
+                        <i class="bi bi-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"></i>
+                    </div>
+                </div>
+
+                <!-- Secret Passcode Verification Field -->
+                <div>
+                    <label class="block text-xs font-bold text-slate-600 uppercase mb-2" for="access_code">Driver Authorization Passcode *</label>
+                    <div class="relative">
+                        <i class="bi bi-key-fill absolute left-4 top-1/2 -translate-y-1/2 text-amber-500"></i>
+                        <input type="password" id="access_code" name="access_code" required placeholder="Enter driver preset passcode"
+                            class="w-full bg-amber-50/50 border border-amber-200 rounded-xl pl-11 pr-4 py-3.5 text-slate-800 text-sm font-medium focus:ring-2 focus:ring-brand-deep outline-none">
+                    </div>
+                    <p class="text-[10px] text-slate-400 mt-1 italic">Enter the preset driver access code (e.g., DRIVER2026)</p>
+                </div>
+
+                <!-- Password & Confirm Password -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 uppercase mb-2" for="password">Account Password *</label>
+                        <div class="relative">
+                            <i class="bi bi-lock absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                            <input type="password" id="password" name="password" required placeholder="Set password"
+                                class="w-full bg-slate-50 border border-slate-200 rounded-xl pl-11 pr-4 py-3.5 text-slate-800 text-sm font-medium focus:ring-2 focus:ring-brand-deep outline-none">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-600 uppercase mb-2" for="confirm_password">Confirm Password *</label>
+                        <div class="relative">
+                            <i class="bi bi-check2-circle absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                            <input type="password" id="confirm_password" name="confirm_password" required placeholder="Re-enter password"
+                                class="w-full bg-slate-50 border border-slate-200 rounded-xl pl-11 pr-4 py-3.5 text-slate-800 text-sm font-medium focus:ring-2 focus:ring-brand-deep outline-none">
+                        </div>
+                    </div>
+                </div>
+
+                <button type="submit" id="submitDriverBtn"
+                    class="w-full bg-brand-deep text-white font-bold py-4 rounded-xl shadow-lg hover:bg-brand-dark active:scale-95 transition-all text-sm uppercase tracking-wider flex items-center justify-center gap-2">
+                    <i class="bi bi-person-check-fill"></i> Complete Driver Registration
+                </button>
+            </form>
+        </div>
+
+        <!-- Footer Text -->
+        <div class="text-center mt-8">
+            <p class="text-slate-400 text-[10px] uppercase tracking-widest font-bold flex items-center justify-center gap-2">
+                <i class="bi bi-shield-check text-brand-deep"></i> Encrypted Institutional Driver Registration
+            </p>
+        </div>
+    </div>
+</body>
+
+</html>

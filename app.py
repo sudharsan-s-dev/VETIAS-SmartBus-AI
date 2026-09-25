@@ -52,6 +52,10 @@ app.config['SESSION_TYPE'] = 'filesystem'
 SKIP_DEVICE_CHECK = os.environ.get('SKIP_DEVICE_CHECK', 'False') == 'True'
 GEOFENCE_LIMIT = int(os.environ.get('GEOFENCE_LIMIT', 100)) # Default 100m for better GPS reliability
 
+# Preset Passcodes for Staff & Driver Registration Gate (Environment Override First)
+DRIVER_PASSCODES = [os.environ.get('DRIVER_REGISTER_CODE', 'DRIVER2026'), 'DRIVER2026', 'driver2026', 'driver', 'driver123', 'VET_DRIVER_2026']
+ADMIN_PASSCODES = [os.environ.get('ADMIN_REGISTER_CODE', 'ADMIN2026'), 'ADMIN2026', 'admin2026', 'admin', 'admin123', 'VET_ADMIN_2026']
+
 db.init_app(app)
 Session(app)
 
@@ -62,30 +66,7 @@ def add_no_cache_headers(response):
     response.headers['Expires'] = '0'
     return response
 
-# AUTO-CREATE DATABASE TABLES & MIGRATE NEW PHASE 1 COLUMNS FOR EXISTING DB
-with app.app_context():
-    db.create_all()
-    try:
-        with db.engine.connect() as conn:
-            from sqlalchemy import text
-            # Student table columns
-            student_cols = [row[1] for row in conn.execute(text("PRAGMA table_info(student);")).fetchall()]
-            if 'face_embedding' not in student_cols:
-                conn.execute(text("ALTER TABLE student ADD COLUMN face_embedding TEXT;"))
-            if 'face_enrolled' not in student_cols:
-                conn.execute(text("ALTER TABLE student ADD COLUMN face_enrolled BOOLEAN DEFAULT 0;"))
-            
-            # Attendance table columns
-            att_cols = [row[1] for row in conn.execute(text("PRAGMA table_info(attendance);")).fetchall()]
-            if 'confidence_score' not in att_cols:
-                conn.execute(text("ALTER TABLE attendance ADD COLUMN confidence_score FLOAT;"))
-            if 'liveness_verified' not in att_cols:
-                conn.execute(text("ALTER TABLE attendance ADD COLUMN liveness_verified BOOLEAN DEFAULT 0;"))
-            
-            conn.commit()
-            print("[DB MIGRATION] Schema verified & updated with Phase 1 facial columns.")
-    except Exception as e:
-        print(f"[DB MIGRATION NOTICE] {e}")
+# App Session Configured
 
 # VERSION STAMP FOR RENDER LOGS
 print("\n" + "="*50)
@@ -193,9 +174,47 @@ class NotificationLog(db.Model):
     error_message = db.Column(db.Text)
     timestamp = db.Column(db.DateTime, default=datetime.datetime.utcnow)
 
+class StaffAccount(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    role = db.Column(db.String(20), nullable=False) # 'driver' or 'admin'
+    name = db.Column(db.String(100), nullable=False)
+    username = db.Column(db.String(50), unique=True, nullable=True)
+    email = db.Column(db.String(120), unique=True, nullable=True)
+    phone = db.Column(db.String(20), unique=True, nullable=True)
+    employee_id = db.Column(db.String(50), unique=True, nullable=True)
+    bus_no = db.Column(db.String(20), nullable=True)
+    password_hash = db.Column(db.String(200), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
+
+
 # --------------------------
 # Helper Functions
 # --------------------------
+
+# AUTO-CREATE DATABASE TABLES & MIGRATE NEW PHASE 1 COLUMNS FOR EXISTING DB
+with app.app_context():
+    db.create_all()
+    try:
+        with db.engine.connect() as conn:
+            from sqlalchemy import text
+            # Student table columns
+            student_cols = [row[1] for row in conn.execute(text("PRAGMA table_info(student);")).fetchall()]
+            if 'face_embedding' not in student_cols:
+                conn.execute(text("ALTER TABLE student ADD COLUMN face_embedding TEXT;"))
+            if 'face_enrolled' not in student_cols:
+                conn.execute(text("ALTER TABLE student ADD COLUMN face_enrolled BOOLEAN DEFAULT 0;"))
+            
+            # Attendance table columns
+            att_cols = [row[1] for row in conn.execute(text("PRAGMA table_info(attendance);")).fetchall()]
+            if 'confidence_score' not in att_cols:
+                conn.execute(text("ALTER TABLE attendance ADD COLUMN confidence_score FLOAT;"))
+            if 'liveness_verified' not in att_cols:
+                conn.execute(text("ALTER TABLE attendance ADD COLUMN liveness_verified BOOLEAN DEFAULT 0;"))
+            
+            conn.commit()
+            print("[DB MIGRATION] Schema verified & updated with Phase 1 facial columns and StaffAccount.")
+    except Exception as e:
+        print(f"[DB MIGRATION NOTICE] {e}")
 
 def haversine(lat1, lon1, lat2, lon2):
     """
@@ -492,17 +511,52 @@ def login():
                 return redirect(url_for('student_dashboard'))
         
         elif user_type == 'driver':
-            # Flexible driver login (driver or drive, case-insensitive, trimmed)
+            # Check DB StaffAccount first
+            staff = StaffAccount.query.filter(
+                (StaffAccount.role == 'driver') & (
+                    (db.func.lower(StaffAccount.employee_id) == u_clean.lower()) |
+                    (StaffAccount.phone == u_clean) |
+                    (db.func.lower(StaffAccount.name) == u_clean.lower()) |
+                    (db.func.lower(StaffAccount.username) == u_clean.lower())
+                )
+            ).first()
+            if staff and check_password_hash(staff.password_hash, p_clean):
+                session['user_id'] = staff.id
+                session['user_type'] = 'driver'
+                session['name'] = staff.name
+                session['username'] = staff.name
+                session['bus_no'] = staff.bus_no or 'Bus-10'
+                return redirect(url_for('driver_dashboard'))
+
+            # Legacy fallback driver check
             if u_clean.lower() in ['driver', 'drive', 'driver10', 'driver-10', 'bus-10', 'bus10'] and p_clean == 'pass':
                 session['user_id'] = 999
                 session['user_type'] = 'driver'
-                session['bus_no'] = 'Bus-10' # Assigned bus
+                session['name'] = 'K. Murugan'
+                session['username'] = 'Driver'
+                session['bus_no'] = 'Bus-10'
                 return redirect(url_for('driver_dashboard'))
 
         elif user_type == 'admin':
-             if u_clean.lower() == 'admin' and p_clean == 'admin':
+            # Check DB StaffAccount first
+            staff = StaffAccount.query.filter(
+                (StaffAccount.role == 'admin') & (
+                    (db.func.lower(StaffAccount.email) == u_clean.lower()) |
+                    (db.func.lower(StaffAccount.name) == u_clean.lower()) |
+                    (db.func.lower(StaffAccount.username) == u_clean.lower())
+                )
+            ).first()
+            if staff and check_password_hash(staff.password_hash, p_clean):
+                session['user_id'] = staff.id
+                session['user_type'] = 'admin'
+                session['name'] = staff.name
+                return redirect(url_for('admin_dashboard'))
+
+            # Legacy fallback admin check
+            if u_clean.lower() == 'admin' and p_clean == 'admin':
                 session['user_id'] = 1
                 session['user_type'] = 'admin'
+                session['name'] = 'System Administrator'
                 return redirect(url_for('admin_dashboard'))
 
         return render_template('login.html', error="Invalid Credentials. For Driver, use Username: 'driver' (or 'drive') and Password: 'pass'")
@@ -803,17 +857,228 @@ def bus_empty_check():
     print(f"!!! BUS CHECKED EMPTY & OCCUPANCY RESET: {bus_no} by {session.get('user_type')} at {datetime.datetime.now()} !!!")
     return jsonify({'status': 'success', 'message': 'Safety Check Recorded & Occupancy Reset for New Trip'})
 
-# --- ADMIN ---
+# --- ADMIN & STAFF REGISTRATION ---
 
 @app.route('/admin')
 @login_required
 def admin_dashboard():
-    if session['user_type'] != 'admin': return redirect('/')
+    if session.get('user_type') != 'admin': return redirect('/')
     students = Student.query.all()
     attendance_log = Attendance.query.order_by(Attendance.timestamp.desc()).all()
     complaints = Complaint.query.all()
     security_alerts = SecurityAlert.query.order_by(SecurityAlert.timestamp.desc()).all()
     return render_template('admin.html', students=students, logs=attendance_log, complaints=complaints, security_alerts=security_alerts)
+
+@app.route('/api/verify-staff-passcode', methods=['POST'])
+def verify_staff_passcode():
+    data = request.json or request.form
+    code = (data.get('passcode') or '').strip()
+    
+    if code in DRIVER_PASSCODES:
+        session['staff_gate_unlocked'] = 'driver'
+        return jsonify({'status': 'success', 'role': 'driver', 'redirect': '/register/driver'})
+    elif code in ADMIN_PASSCODES:
+        session['staff_gate_unlocked'] = 'admin'
+        return jsonify({'status': 'success', 'role': 'admin', 'redirect': '/register/admin'})
+    else:
+        return jsonify({'status': 'error', 'message': 'Invalid Staff Authorization Code. Access Denied.'}), 401
+
+@app.route('/register/driver', methods=['GET', 'POST'])
+def register_driver():
+    if request.method == 'POST':
+        name = (request.form.get('fullname') or '').strip()
+        phone = (request.form.get('phone') or '').strip()
+        employee_id = (request.form.get('employee_id') or '').strip().upper()
+        bus_no = (request.form.get('busRoute') or 'Bus-10').strip()
+        access_code = (request.form.get('access_code') or '').strip()
+        password = request.form.get('password')
+        confirm_password = request.form.get('confirm_password')
+
+        if access_code and access_code not in DRIVER_PASSCODES:
+            return render_template('register_driver.html', error="Invalid Driver Authorization Code.")
+
+        if not name or not phone or not employee_id or not password:
+            return render_template('register_driver.html', error="All fields marked with * are required.")
+
+        if password != confirm_password:
+            return render_template('register_driver.html', error="Passwords do not match. Please verify your password entry.")
+
+        if StaffAccount.query.filter_by(employee_id=employee_id).first():
+            return render_template('register_driver.html', error=f"Employee ID '{employee_id}' is already registered.")
+        if StaffAccount.query.filter_by(phone=phone).first():
+            return render_template('register_driver.html', error=f"Phone number '{phone}' is already registered.")
+
+        new_driver = StaffAccount(
+            role='driver',
+            name=name,
+            phone=phone,
+            employee_id=employee_id,
+            bus_no=bus_no,
+            password_hash=generate_password_hash(password)
+        )
+        db.session.add(new_driver)
+
+        audit = SystemAudit(
+            action=f"Driver Self-Registration: {name} ({employee_id})",
+            admin_name="Self-Register",
+            reason="Driver Registration Gate"
+        )
+        db.session.add(audit)
+        db.session.commit()
+
+        return redirect(url_for('login', success=f"Driver account created successfully for {name}! Please sign in with your Employee ID or Phone."))
+
+    return render_template('register_driver.html')
+
+@app.route('/register/admin', methods=['GET', 'POST'])
+def register_admin():
+    if request.method == 'POST':
+        name = (request.form.get('fullname') or '').strip()
+        email = (request.form.get('email') or '').strip().lower()
+        access_code = (request.form.get('access_code') or '').strip()
+        password = request.form.get('password')
+        confirm_password = request.form.get('confirm_password')
+
+        if access_code and access_code not in ADMIN_PASSCODES:
+            return render_template('register_admin.html', error="Invalid Admin Authorization Code.")
+
+        if not name or not email or not password:
+            return render_template('register_admin.html', error="All fields marked with * are required.")
+
+        if password != confirm_password:
+            return render_template('register_admin.html', error="Passwords do not match. Please verify your password entry.")
+
+        if StaffAccount.query.filter(db.func.lower(StaffAccount.email) == email.lower()).first():
+            return render_template('register_admin.html', error=f"Email '{email}' is already registered.")
+
+        new_admin = StaffAccount(
+            role='admin',
+            name=name,
+            email=email,
+            password_hash=generate_password_hash(password)
+        )
+        db.session.add(new_admin)
+
+        audit = SystemAudit(
+            action=f"Admin Self-Registration: {name} ({email})",
+            admin_name="Self-Register",
+            reason="Admin Registration Gate"
+        )
+        db.session.add(audit)
+        db.session.commit()
+
+        return redirect(url_for('login', success=f"Admin account created successfully for {name}! Please sign in with your Email Address."))
+
+    return render_template('register_admin.html')
+
+@app.route('/api/admin/bus-detail/<bus_no>')
+@login_required
+def admin_bus_detail(bus_no):
+    if session.get('user_type') != 'admin':
+        return jsonify({'status': 'error', 'message': 'Unauthorized'}), 403
+
+    bus_norm = bus_no.strip()
+    route = get_preset_route(bus_norm)
+    route_bus_no = route['bus_no']
+
+    # 1. Driver info
+    staff_driver = StaffAccount.query.filter(
+        StaffAccount.role == 'driver',
+        db.func.lower(StaffAccount.bus_no) == route_bus_no.lower()
+    ).first()
+
+    if staff_driver:
+        driver_info = {
+            "name": staff_driver.name,
+            "phone": staff_driver.phone or "N/A",
+            "employee_id": staff_driver.employee_id or "N/A",
+            "status": "Active On-Duty",
+            "assigned_bus": staff_driver.bus_no
+        }
+    else:
+        driver_info = {
+            "name": route['driver_name'],
+            "phone": "+91 98427 12345",
+            "employee_id": f"EMP-{route_bus_no.replace('-', '')}",
+            "status": "Active On-Duty",
+            "assigned_bus": route_bus_no
+        }
+
+    # 2. Location & Occupancy
+    cached = BUS_LOCATION_CACHE.get(route_bus_no) or BUS_LOCATION_CACHE.get(bus_norm)
+    bus_live = db.session.get(BusLive, route_bus_no) or db.session.get(BusLive, bus_norm)
+    
+    lat = cached['lat'] if cached else (bus_live.lat if bus_live else route['waypoints'][0][0])
+    lng = cached['lng'] if cached else (bus_live.lng if bus_live else route['waypoints'][0][1])
+    last_updated_dt = cached['timestamp'] if cached else (bus_live.last_updated if bus_live else datetime.datetime.now())
+    last_ping_str = last_updated_dt.strftime('%H:%M:%S') if isinstance(last_updated_dt, datetime.datetime) else str(last_updated_dt)
+
+    today_start = datetime.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    last_empty = BUS_EMPTY_CACHE.get(route_bus_no, today_start)
+    since_time = max(today_start, last_empty)
+
+    capacity = BUS_CAPACITY.get(route_bus_no, 40)
+    unique_boarded = db.session.query(Attendance.student_id).filter(
+        db.func.lower(Attendance.bus_no) == route_bus_no.lower(),
+        Attendance.timestamp >= since_time
+    ).distinct().count()
+
+    occupied_count = min(unique_boarded, capacity)
+    occupancy_pct = round((occupied_count / capacity) * 100, 1)
+
+    # 3. Today's boardings for this bus
+    atts = Attendance.query.filter(
+        db.func.lower(Attendance.bus_no) == route_bus_no.lower(),
+        Attendance.timestamp >= today_start
+    ).order_by(Attendance.timestamp.desc()).all()
+
+    boardings_list = []
+    for a in atts:
+        boardings_list.append({
+            "id": a.id,
+            "student_name": a.student_name,
+            "timestamp": a.timestamp.strftime('%H:%M:%S'),
+            "method": a.entry_method or a.method,
+            "status": a.verification_status or "VERIFIED"
+        })
+
+    # 4. Security alerts for this bus
+    alerts = SecurityAlert.query.filter(
+        db.func.lower(SecurityAlert.bus_no) == route_bus_no.lower()
+    ).order_by(SecurityAlert.timestamp.desc()).limit(10).all()
+
+    alerts_list = []
+    for al in alerts:
+        st = db.session.get(Student, al.student_id) if al.student_id else None
+        alerts_list.append({
+            "id": al.id,
+            "student_name": st.name if st else "System Event",
+            "reason": al.reason,
+            "snapshot_path": al.snapshot_path,
+            "timestamp": al.timestamp.strftime('%d %b | %H:%M:%S')
+        })
+
+    return jsonify({
+        "status": "success",
+        "bus_no": route_bus_no,
+        "route_name": route['name'],
+        "driver": driver_info,
+        "location": {
+            "lat": lat,
+            "lng": lng,
+            "last_ping": last_ping_str,
+            "stops": route['stops'],
+            "waypoints": route['waypoints']
+        },
+        "occupancy": {
+            "occupied_count": occupied_count,
+            "total_capacity": capacity,
+            "occupancy_pct": occupancy_pct
+        },
+        "simulation_active": SIMULATION_ACTIVE,
+        "boardings": boardings_list,
+        "alerts": alerts_list
+    })
 
 @app.route('/api/toggle-fee/<int:student_id>')
 @login_required
@@ -1269,7 +1534,7 @@ PRESET_ROUTES = {
     }
 }
 
-SIMULATION_ACTIVE = False
+SIMULATION_ACTIVE = True
 SIMULATION_INDICES = {"Bus-10": 0, "Bus-06": 0, "Bus-01": 0}
 SIMULATION_THREAD = None
 
@@ -1325,6 +1590,8 @@ def start_simulation_thread_if_needed():
     if SIMULATION_THREAD is None or not SIMULATION_THREAD.is_alive():
         SIMULATION_THREAD = threading.Thread(target=simulation_loop, daemon=True)
         SIMULATION_THREAD.start()
+
+start_simulation_thread_if_needed()
 
 @app.route('/api/toggle-simulation', methods=['GET', 'POST'])
 def toggle_simulation():
