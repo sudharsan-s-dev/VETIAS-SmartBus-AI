@@ -48,6 +48,10 @@
     <!-- Icons -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
 
+    <!-- Leaflet.js CDN -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
     <style type="text/tailwindcss">
         @layer base {
             html {
@@ -70,6 +74,35 @@
             .table-cell {
                 @apply px-6 py-4 text-sm text-slate-600 font-medium whitespace-nowrap;
             }
+        }
+        .leaflet-div-icon,
+        .leaflet-marker-icon,
+        .leaflet-marker-icon.custom-admin-stop-icon,
+        .leaflet-marker-icon.custom-bus-icon {
+            background: transparent !important;
+            border: none !important;
+            width: auto !important;
+            height: auto !important;
+            max-width: none !important;
+            max-height: none !important;
+        }
+        .leaflet-marker-icon.custom-bus-icon {
+            transition: transform 1.9s linear, left 1.9s linear, top 1.9s linear !important;
+        }
+        .map-badge-pill {
+            display: inline-flex !important;
+            align-items: center !important;
+            gap: 6px !important;
+            white-space: nowrap !important;
+            width: auto !important;
+            min-width: max-content !important;
+            max-width: none !important;
+            box-sizing: border-box !important;
+            padding: 6px 14px !important;
+            border-radius: 9999px !important;
+            border: 2px solid #ffffff !important;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.35) !important;
+            transform: translate(-50%, -50%) !important;
         }
         @layer utilities {
             .bg-glass {
@@ -269,6 +302,30 @@
                         </div>
                     </div>
                 </div>
+            </div>
+
+            <!-- Fleet GPS Map Card -->
+            <div class="bg-white rounded-3xl border border-slate-100 p-6 shadow-soft mb-12">
+                <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-xl bg-brand-deep text-white flex items-center justify-center text-lg shadow-sm">
+                            <i class="bi bi-map-fill"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-extrabold text-brand-dark uppercase tracking-tight">Live Fleet GPS Map</h3>
+                            <p class="text-xs text-slate-500 font-medium">Real-time bus locations, routes & passenger counts</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <span id="admin-sim-badge" class="px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-600 border border-slate-200 flex items-center gap-1.5">
+                            <span id="admin-sim-dot" class="w-2 h-2 rounded-full bg-slate-400"></span> <span id="admin-sim-text">Simulation Paused</span>
+                        </span>
+                        <button id="admin-sim-toggle-btn" onclick="toggleSimFromAdmin()" class="px-4 py-2 rounded-xl bg-brand-deep text-white hover:bg-brand-dark font-bold text-xs uppercase tracking-wider transition-all flex items-center gap-2 shadow-sm">
+                            <i id="admin-sim-icon" class="bi bi-play-fill text-base"></i> <span id="admin-sim-btn-text">Start GPS Sim</span>
+                        </button>
+                    </div>
+                </div>
+                <div id="admin-fleet-map" class="w-full h-[380px] rounded-2xl border border-slate-200 z-10 overflow-hidden"></div>
             </div>
 
             <!-- Recent Feedback -->
@@ -982,6 +1039,123 @@
 
             mobileMenuToggle?.addEventListener('click', () => toggleMobileMenu());
             closeMobileMenu?.addEventListener('click', () => toggleMobileMenu(true));
+
+            // --- LEAFLET FLEET MAP & GPS SIMULATION LOGIC ---
+            let adminMap = null;
+            let adminBusMarkers = {};
+            let adminRoutePolylines = {};
+
+            window.toggleSimFromAdmin = function() {
+                fetch('/api/toggle-simulation', { method: 'POST', headers: {'Content-Type': 'application/json'} })
+                .then(r => r.json())
+                .then(data => {
+                    if (typeof showToast === 'function') showToast(data.message || "Simulation toggled", "success");
+                    updateAdminSimUI(data.simulation_active);
+                    fetchAdminFleetLocations();
+                }).catch(e => console.error("Sim toggle error:", e));
+            };
+
+            function updateAdminSimUI(isActive) {
+                const dot = document.getElementById('admin-sim-dot');
+                const text = document.getElementById('admin-sim-text');
+                const badge = document.getElementById('admin-sim-badge');
+                const btnText = document.getElementById('admin-sim-btn-text');
+                const icon = document.getElementById('admin-sim-icon');
+
+                if (isActive) {
+                    if (dot) dot.className = "w-2 h-2 rounded-full bg-emerald-500 animate-ping";
+                    if (text) text.innerText = "Simulation Active";
+                    if (badge) badge.className = "px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-600 border border-emerald-200 flex items-center gap-1.5";
+                    if (btnText) btnText.innerText = "Pause GPS Sim";
+                    if (icon) icon.className = "bi bi-pause-fill text-base";
+                } else {
+                    if (dot) dot.className = "w-2 h-2 rounded-full bg-slate-400";
+                    if (text) text.innerText = "Simulation Paused";
+                    if (badge) badge.className = "px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-600 border border-slate-200 flex items-center gap-1.5";
+                    if (btnText) btnText.innerText = "Start GPS Sim";
+                    if (icon) icon.className = "bi bi-play-fill text-base";
+                }
+            }
+
+            function initAdminFleetMap() {
+                const mapEl = document.getElementById('admin-fleet-map');
+                if (!mapEl || adminMap) return;
+
+                adminMap = L.map('admin-fleet-map').setView([11.3300, 77.6850], 12);
+
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    maxZoom: 19,
+                    attribution: '&copy; OpenStreetMap'
+                }).addTo(adminMap);
+
+                setTimeout(() => {
+                    if (adminMap) adminMap.invalidateSize();
+                }, 200);
+
+                fetchAdminFleetLocations();
+            }
+
+            function fetchAdminFleetLocations() {
+                fetch('/api/bus-locations')
+                .then(r => r.json())
+                .then(data => {
+                    if (!data.buses) return;
+                    if (adminMap) adminMap.invalidateSize();
+                    updateAdminSimUI(data.simulation_active);
+
+                    data.buses.forEach(b => {
+                        const busNo = b.bus_no;
+                        const lat = b.lat;
+                        const lng = b.lng;
+                        const popupContent = `
+                            <div style="font-family: sans-serif; padding: 2px;">
+                                <strong style="color: #004d40; font-size: 14px;">${busNo} - ${b.route_name}</strong><br/>
+                                <span style="font-size: 11px; color: #666;">Driver: ${b.driver_name}</span><br/>
+                                <span style="font-size: 12px; font-weight: bold; color: #10b981;">Occupancy: ${b.occupied_count} / ${b.total_capacity} seats</span><br/>
+                                <span style="font-size: 10px; color: #999;">Last Updated: ${b.last_updated}</span>
+                            </div>
+                        `;
+
+                        if (b.waypoints && !adminRoutePolylines[busNo]) {
+                            const routeColor = busNo === 'Bus-10' ? '#004d40' : (busNo === 'Bus-06' ? '#0284c7' : '#d97706');
+                            adminRoutePolylines[busNo] = L.polyline(b.waypoints, {
+                                color: routeColor,
+                                weight: 4,
+                                opacity: 0.6,
+                                dashArray: '6, 6'
+                            }).addTo(adminMap);
+
+                            if (b.stops && b.stops.length > 0) {
+                                b.stops.forEach(st => {
+                                    const stopIcon = L.divIcon({
+                                        className: 'custom-admin-stop-icon',
+                                        html: `<div class="map-badge-pill" style="background-color:#ff9800; color:white; font-weight:700; font-size:11px;">📍 ${st.name}</div>`,
+                                        iconSize: null,
+                                        iconAnchor: null
+                                    });
+                                    L.marker([st.lat, st.lng], { icon: stopIcon }).addTo(adminMap).bindPopup(`<b>${st.name} (${busNo})</b>`);
+                                });
+                            }
+                        }
+
+                        if (!adminBusMarkers[busNo]) {
+                            const busIcon = L.divIcon({
+                                className: 'custom-bus-icon',
+                                html: `<div class="map-badge-pill" style="background-color:#004d40; color:white; font-weight:800; font-size:12px;">🚌 ${busNo} Live</div>`,
+                                iconSize: null,
+                                iconAnchor: null
+                            });
+                            adminBusMarkers[busNo] = L.marker([lat, lng], { icon: busIcon }).addTo(adminMap).bindPopup(popupContent);
+                        } else {
+                            adminBusMarkers[busNo].setLatLng([lat, lng]);
+                            adminBusMarkers[busNo].setPopupContent(popupContent);
+                        }
+                    });
+                }).catch(e => console.error("Fleet map fetch error:", e));
+            }
+
+            initAdminFleetMap();
+            setInterval(fetchAdminFleetLocations, 2000);
 
             // Admin Occupancy Monitor
             window.fetchAdminOccupancy = function() {

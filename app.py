@@ -2,6 +2,7 @@ import os
 import datetime
 import json
 import math
+import time
 import smtplib
 import threading
 import logging
@@ -676,30 +677,32 @@ def driver_heartbeat():
     lat = data.get('lat')
     lng = data.get('lng')
 
-    # Update Memory
-    BUS_LOCATION_CACHE[bus_no] = {
-        'lat': lat,
-        'lng': lng,
-        'timestamp': datetime.datetime.now()
-    }
-    print(f"[DEBUG DRIVER] Bus {bus_no} Updated: {lat}, {lng}")
-    
-    # PERSIST TO DB (Fix for "Bus not active" after restart)
-    try:
-        bus_live = db.session.get(BusLive, bus_no)
-        if not bus_live:
-            bus_live = BusLive(bus_no=bus_no)
-            db.session.add(bus_live)
+    # If simulation mode is active, do not overwrite simulated movement with static browser location
+    if not SIMULATION_ACTIVE:
+        BUS_LOCATION_CACHE[bus_no] = {
+            'lat': lat,
+            'lng': lng,
+            'timestamp': datetime.datetime.now()
+        }
         
-        bus_live.lat = lat
-        bus_live.lng = lng
-        bus_live.driver_name = session.get('username', 'Driver') # Optional update
-        bus_live.last_updated = datetime.datetime.now()
-        db.session.commit()
-    except Exception as e:
-        print(f"DB Write Error in Heartbeat: {e}")
+        # PERSIST TO DB (Fix for "Bus not active" after restart)
+        try:
+            bus_live = db.session.get(BusLive, bus_no)
+            if not bus_live:
+                bus_live = BusLive(bus_no=bus_no)
+                db.session.add(bus_live)
+            
+            bus_live.lat = lat
+            bus_live.lng = lng
+            bus_live.driver_name = session.get('username', 'Driver') # Optional update
+            bus_live.last_updated = datetime.datetime.now()
+            db.session.commit()
+        except Exception as e:
+            print(f"DB Write Error in Heartbeat: {e}")
+    else:
+        print(f"[DEBUG DRIVER] Heartbeat received for Bus {bus_no}, but SIMULATION_ACTIVE is True (ignoring static browser location override).")
     
-    return jsonify({'status': 'success', 'sync': True})
+    return jsonify({'status': 'success', 'sync': True, 'simulation_active': SIMULATION_ACTIVE})
 
 @app.route('/api/get-qr')
 @login_required
@@ -1191,6 +1194,234 @@ def bus_occupancy(bus_no):
 def kiosk():
     bus_no = request.args.get('bus_no', 'Bus-10')
     return render_template('kiosk.html', bus_no=bus_no)
+
+# --- PHASE 4: PRESET FLEET ROUTES & GPS SIMULATION ENGINE ---
+
+PRESET_ROUTES = {
+    "Bus-10": {
+        "name": "Erode Town Route",
+        "bus_no": "Bus-10",
+        "driver_name": "K. Murugan (Bus-10)",
+        "stops": [
+            {"name": "VET IAS Campus (Hub)", "lat": 11.3175, "lng": 77.6710},
+            {"name": "Thindal Medu Stop", "lat": 11.3250, "lng": 77.6820},
+            {"name": "Perundurai Road", "lat": 11.3320, "lng": 77.6950},
+            {"name": "Erode Central Bus Stand", "lat": 11.3415, "lng": 77.7172},
+            {"name": "Erode Railway Station", "lat": 11.3380, "lng": 77.7280}
+        ],
+        "waypoints": [
+            [11.3175, 77.6710],
+            [11.3210, 77.6760],
+            [11.3250, 77.6820],
+            [11.3285, 77.6885],
+            [11.3320, 77.6950],
+            [11.3368, 77.7060],
+            [11.3415, 77.7172],
+            [11.3398, 77.7225],
+            [11.3380, 77.7280],
+            [11.3275, 77.6990],
+            [11.3175, 77.6710]
+        ]
+    },
+    "Bus-06": {
+        "name": "Perundurai Route",
+        "bus_no": "Bus-06",
+        "driver_name": "R. Selvam (Bus-06)",
+        "stops": [
+            {"name": "VET IAS Campus", "lat": 11.3175, "lng": 77.6710},
+            {"name": "Sengodampalayam", "lat": 11.3050, "lng": 77.6520},
+            {"name": "Chithode Junction", "lat": 11.3980, "lng": 77.6650},
+            {"name": "Perundurai Bunk", "lat": 11.2750, "lng": 77.5820}
+        ],
+        "waypoints": [
+            [11.3175, 77.6710],
+            [11.3110, 77.6610],
+            [11.3050, 77.6520],
+            [11.3500, 77.6580],
+            [11.3980, 77.6650],
+            [11.3360, 77.6235],
+            [11.2750, 77.5820],
+            [11.2960, 77.6265],
+            [11.3175, 77.6710]
+        ]
+    },
+    "Bus-01": {
+        "name": "Bhavani Route",
+        "bus_no": "Bus-01",
+        "driver_name": "M. Kumar (Bus-01)",
+        "stops": [
+            {"name": "VET IAS Campus", "lat": 11.3175, "lng": 77.6710},
+            {"name": "Lakshmi Nagar", "lat": 11.3650, "lng": 77.6950},
+            {"name": "Bhavani Bus Stand", "lat": 11.4450, "lng": 77.6820},
+            {"name": "Urachikottai", "lat": 11.4620, "lng": 77.6750}
+        ],
+        "waypoints": [
+            [11.3175, 77.6710],
+            [11.3412, 77.6830],
+            [11.3650, 77.6950],
+            [11.4050, 77.6885],
+            [11.4450, 77.6820],
+            [11.4535, 77.6785],
+            [11.4620, 77.6750],
+            [11.3900, 77.6730],
+            [11.3175, 77.6710]
+        ]
+    }
+}
+
+SIMULATION_ACTIVE = False
+SIMULATION_INDICES = {"Bus-10": 0, "Bus-06": 0, "Bus-01": 0}
+SIMULATION_THREAD = None
+
+def generate_fine_waypoints(coarse_wps, steps_per_segment=10):
+    fine_wps = []
+    num_points = len(coarse_wps)
+    for i in range(num_points):
+        p1 = coarse_wps[i]
+        p2 = coarse_wps[(i + 1) % num_points]
+        for s in range(steps_per_segment):
+            t = s / steps_per_segment
+            lat = p1[0] + t * (p2[0] - p1[0])
+            lng = p1[1] + t * (p2[1] - p1[1])
+            fine_wps.append([round(lat, 6), round(lng, 6)])
+    return fine_wps
+
+# Precompute smooth interpolated routes
+FINE_ROUTES = {bus_no: generate_fine_waypoints(route["waypoints"], steps_per_segment=15) for bus_no, route in PRESET_ROUTES.items()}
+
+def simulation_loop():
+    global SIMULATION_INDICES, SIMULATION_ACTIVE
+    while True:
+        if SIMULATION_ACTIVE:
+            try:
+                with app.app_context():
+                    for bus_no, route in PRESET_ROUTES.items():
+                        wps = FINE_ROUTES.get(bus_no, route["waypoints"])
+                        idx = (SIMULATION_INDICES.get(bus_no, 0) + 1) % len(wps)
+                        SIMULATION_INDICES[bus_no] = idx
+                        lat, lng = wps[idx]
+                        
+                        BUS_LOCATION_CACHE[bus_no] = {
+                            'lat': lat,
+                            'lng': lng,
+                            'timestamp': datetime.datetime.now()
+                        }
+                        
+                        bus_live = db.session.get(BusLive, bus_no)
+                        if not bus_live:
+                            bus_live = BusLive(bus_no=bus_no, driver_name=route["driver_name"])
+                            db.session.add(bus_live)
+                        bus_live.lat = lat
+                        bus_live.lng = lng
+                        bus_live.last_updated = datetime.datetime.now()
+                        db.session.commit()
+            except Exception as e:
+                print(f"[SIMULATION TICK ERROR] {e}")
+                sys.stdout.flush()
+        time.sleep(2)
+
+def start_simulation_thread_if_needed():
+    global SIMULATION_THREAD
+    if SIMULATION_THREAD is None or not SIMULATION_THREAD.is_alive():
+        SIMULATION_THREAD = threading.Thread(target=simulation_loop, daemon=True)
+        SIMULATION_THREAD.start()
+
+@app.route('/api/toggle-simulation', methods=['GET', 'POST'])
+def toggle_simulation():
+    global SIMULATION_ACTIVE
+    data = (request.json if request.is_json else {}) or {}
+    if 'active' in data:
+        SIMULATION_ACTIVE = bool(data['active'])
+    elif request.args.get('active'):
+        SIMULATION_ACTIVE = request.args.get('active').lower() in ['true', '1']
+    else:
+        SIMULATION_ACTIVE = not SIMULATION_ACTIVE
+        
+    start_simulation_thread_if_needed()
+    print(f"[GPS SIMULATION] Toggled SIMULATION_ACTIVE = {SIMULATION_ACTIVE}")
+    return jsonify({
+        'status': 'success',
+        'simulation_active': SIMULATION_ACTIVE,
+        'message': 'Simulation Started' if SIMULATION_ACTIVE else 'Simulation Paused'
+    })
+
+@app.route('/api/simulation-status')
+def simulation_status():
+    return jsonify({'simulation_active': SIMULATION_ACTIVE})
+
+@app.route('/api/bus-locations')
+def bus_locations():
+    buses_list = []
+    today_start = datetime.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    for bus_no, route in PRESET_ROUTES.items():
+        cached = BUS_LOCATION_CACHE.get(bus_no)
+        bus_live = db.session.get(BusLive, bus_no)
+        
+        lat = cached['lat'] if cached else (bus_live.lat if bus_live else route['waypoints'][0][0])
+        lng = cached['lng'] if cached else (bus_live.lng if bus_live else route['waypoints'][0][1])
+        last_updated_dt = cached['timestamp'] if cached else (bus_live.last_updated if bus_live else datetime.datetime.now())
+        
+        last_empty = BUS_EMPTY_CACHE.get(bus_no, today_start)
+        since_time = max(today_start, last_empty)
+        boarded_count = db.session.query(Attendance.student_id).filter(
+            db.func.lower(Attendance.bus_no) == bus_no.lower(),
+            Attendance.timestamp >= since_time
+        ).distinct().count()
+        
+        buses_list.append({
+            'bus_no': bus_no,
+            'driver_name': route['driver_name'],
+            'route_name': route['name'],
+            'lat': lat,
+            'lng': lng,
+            'occupied_count': boarded_count,
+            'total_capacity': BUS_CAPACITY.get(bus_no, 40),
+            'last_updated': last_updated_dt.strftime('%H:%M:%S') if isinstance(last_updated_dt, datetime.datetime) else str(last_updated_dt),
+            'stops': route['stops'],
+            'waypoints': route['waypoints']
+        })
+        
+    return jsonify({
+        'status': 'success',
+        'buses': buses_list,
+        'simulation_active': SIMULATION_ACTIVE
+    })
+
+def get_preset_route(bus_no):
+    if not bus_no:
+        return PRESET_ROUTES["Bus-10"]
+    bus_clean = bus_no.strip()
+    if bus_clean in PRESET_ROUTES:
+        return PRESET_ROUTES[bus_clean]
+    for k, v in PRESET_ROUTES.items():
+        if k.lower() == bus_clean.lower():
+            return v
+    return PRESET_ROUTES["Bus-10"]
+
+@app.route('/api/bus-route/<bus_no>')
+def bus_route_api(bus_no):
+    bus_norm = bus_no.strip()
+    route = get_preset_route(bus_norm)
+    route_bus_no = route['bus_no']
+    
+    cached = BUS_LOCATION_CACHE.get(route_bus_no) or BUS_LOCATION_CACHE.get(bus_norm)
+    bus_live = db.session.get(BusLive, route_bus_no) or db.session.get(BusLive, bus_norm)
+    
+    lat = cached['lat'] if cached else (bus_live.lat if bus_live else route['waypoints'][0][0])
+    lng = cached['lng'] if cached else (bus_live.lng if bus_live else route['waypoints'][0][1])
+    
+    return jsonify({
+        'status': 'success',
+        'bus_no': route_bus_no,
+        'route_name': route['name'],
+        'driver_name': route['driver_name'],
+        'current_lat': lat,
+        'current_lng': lng,
+        'stops': route['stops'],
+        'waypoints': route['waypoints'],
+        'simulation_active': SIMULATION_ACTIVE
+    })
 
 if __name__ == "__main__":
     # Local development startup

@@ -50,6 +50,10 @@
     <!-- jsQR — lightweight pure-JS QR decoder, no UI injected -->
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 
+    <!-- Leaflet.js CDN -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
     <style type="text/tailwindcss">
         @layer base {
             html {
@@ -83,6 +87,35 @@
             .bg-glass {
                 @apply bg-white/80 backdrop-blur-md border border-white/20;
             }
+        }
+        .leaflet-div-icon,
+        .leaflet-marker-icon,
+        .leaflet-marker-icon.custom-student-stop-icon,
+        .leaflet-marker-icon.custom-student-bus-icon {
+            background: transparent !important;
+            border: none !important;
+            width: auto !important;
+            height: auto !important;
+            max-width: none !important;
+            max-height: none !important;
+        }
+        .leaflet-marker-icon.custom-student-bus-icon {
+            transition: transform 1.9s linear, left 1.9s linear, top 1.9s linear !important;
+        }
+        .map-badge-pill {
+            display: inline-flex !important;
+            align-items: center !important;
+            gap: 6px !important;
+            white-space: nowrap !important;
+            width: auto !important;
+            min-width: max-content !important;
+            max-width: none !important;
+            box-sizing: border-box !important;
+            padding: 6px 14px !important;
+            border-radius: 9999px !important;
+            border: 2px solid #ffffff !important;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.35) !important;
+            transform: translate(-50%, -50%) !important;
         }
     </style>
 </head>
@@ -238,6 +271,27 @@
                         </div>
                     </div>
                 </div>
+            </div>
+
+            <!-- Live Bus Tracking Map Card -->
+            <div class="bg-white rounded-3xl border border-slate-100 p-6 shadow-soft mb-12">
+                <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-xl bg-brand-deep text-white flex items-center justify-center text-lg shadow-sm">
+                            <i class="bi bi-geo-alt-fill"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-extrabold text-brand-dark uppercase tracking-tight">Live Bus Tracking: {{ student.bus_no }}</h3>
+                            <p class="text-xs text-slate-500 font-medium" id="student-tracking-subtitle">Tracking bus proximity to your boarding stop</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <span id="student-dist-badge" class="px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-600 border border-emerald-200 flex items-center gap-1.5 font-mono">
+                            <i class="bi bi-clock-history"></i> <span id="student-dist-text">Calculating Distance...</span>
+                        </span>
+                    </div>
+                </div>
+                <div id="student-tracking-map" class="w-full h-[360px] rounded-2xl border border-slate-200 z-10 overflow-hidden"></div>
             </div>
 
             <!-- Activity Table -->
@@ -807,6 +861,106 @@
                     showToast("Registry submission failed. Check network link.", "error");
                 }
             };
+
+            // --- LEAFLET STUDENT BUS TRACKING MAP LOGIC ---
+            const studentBusNo = "{{ student.bus_no }}";
+            let studentMap = null;
+            let studentBusMarker = null;
+            let studentStopMarker = null;
+            let studentRoutePolyline = null;
+
+            function haversineDistMeters(lat1, lon1, lat2, lon2) {
+                const R = 6371000;
+                const dLat = (lat2 - lat1) * Math.PI / 180;
+                const dLon = (lon2 - lon1) * Math.PI / 180;
+                const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                          Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                          Math.sin(dLon/2) * Math.sin(dLon/2);
+                const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+                return R * c;
+            }
+
+            function initStudentMap() {
+                const mapEl = document.getElementById('student-tracking-map');
+                if (!mapEl || studentMap) return;
+
+                studentMap = L.map('student-tracking-map').setView([11.3300, 77.6850], 13);
+
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    maxZoom: 19,
+                    attribution: '&copy; OpenStreetMap'
+                }).addTo(studentMap);
+
+                setTimeout(() => {
+                    if (studentMap) studentMap.invalidateSize();
+                }, 200);
+
+                fetchStudentBusTracking();
+            }
+
+            function fetchStudentBusTracking() {
+                fetch(`/api/bus-route/${encodeURIComponent(studentBusNo)}`)
+                .then(r => r.json())
+                .then(data => {
+                    if (!data.waypoints) return;
+                    if (studentMap) studentMap.invalidateSize();
+
+                    const subEl = document.getElementById('student-tracking-subtitle');
+                    if (subEl) subEl.innerText = `${data.route_name} • Driver: ${data.driver_name}`;
+                    if (!studentRoutePolyline) {
+                        studentRoutePolyline = L.polyline(data.waypoints, {
+                            color: '#004d40',
+                            weight: 5,
+                            opacity: 0.8
+                        }).addTo(studentMap);
+                        studentMap.fitBounds(studentRoutePolyline.getBounds(), { padding: [30, 30] });
+                    }
+
+                    const studentStop = data.stops && data.stops.length > 1 ? data.stops[1] : (data.stops ? data.stops[0] : null);
+                    if (studentStop && !studentStopMarker) {
+                        const stopIcon = L.divIcon({
+                            className: 'custom-student-stop-icon',
+                            html: `<div class="map-badge-pill" style="background-color:#ff9800; color:white; font-weight:700; font-size:11px;">📍 ${studentStop.name}</div>`,
+                            iconSize: null,
+                            iconAnchor: null
+                        });
+                        studentStopMarker = L.marker([studentStop.lat, studentStop.lng], { icon: stopIcon }).addTo(studentMap).bindPopup(`<b>Boarding Stop: ${studentStop.name} (Your Stop)</b>`);
+                    }
+
+                    const curLat = data.current_lat;
+                    const curLng = data.current_lng;
+                    const busIcon = L.divIcon({
+                        className: 'custom-student-bus-icon',
+                        html: `<div class="map-badge-pill" style="background-color:#004d40; color:white; font-weight:800; font-size:12px;">🚌 ${studentBusNo} Live</div>`,
+                        iconSize: null,
+                        iconAnchor: null
+                    });
+
+                    if (!studentBusMarker) {
+                        studentBusMarker = L.marker([curLat, curLng], { icon: busIcon }).addTo(studentMap).bindPopup(`<b>${studentBusNo} Current Location</b>`);
+                    } else {
+                        studentBusMarker.setLatLng([curLat, curLng]);
+                    }
+
+                    if (studentStop) {
+                        const meters = haversineDistMeters(curLat, curLng, studentStop.lat, studentStop.lng);
+                        const txtEl = document.getElementById('student-dist-text');
+                        if (txtEl) {
+                            if (meters < 200) {
+                                txtEl.innerText = `Bus Arrived at Stop (${Math.round(meters)}m)`;
+                            } else if (meters < 1000) {
+                                txtEl.innerText = `${Math.round(meters)}m to your stop (~${Math.ceil(meters / 250)} mins)`;
+                            } else {
+                                const km = (meters / 1000).toFixed(1);
+                                txtEl.innerText = `${km} km to your stop (~${Math.ceil(meters / 500)} mins)`;
+                            }
+                        }
+                    }
+                }).catch(e => console.error("Student bus tracking map fetch error:", e));
+            }
+
+            initStudentMap();
+            setInterval(fetchStudentBusTracking, 2000);
         });
     </script>
 </body>

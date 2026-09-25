@@ -17,6 +17,10 @@
     <!-- QR Code Lib -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
+    <!-- Leaflet.js CDN -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
     <script>
         tailwind.config = {
             theme: {
@@ -60,6 +64,35 @@
             .mobile-nav-btn { @apply w-full text-slate-600 text-lg font-bold flex items-center gap-4 px-6 py-4 rounded-xl hover:bg-brand-deep/5 hover:text-brand-deep transition-colors focus:outline-none; }
 
             .manifest-item { @apply p-4 border-b border-slate-50 last:border-none hover:bg-slate-50/50 transition-colors flex items-center justify-between; }
+        }
+        .leaflet-div-icon,
+        .leaflet-marker-icon,
+        .leaflet-marker-icon.custom-stop-icon,
+        .leaflet-marker-icon.custom-driver-bus-icon {
+            background: transparent !important;
+            border: none !important;
+            width: auto !important;
+            height: auto !important;
+            max-width: none !important;
+            max-height: none !important;
+        }
+        .leaflet-marker-icon.custom-driver-bus-icon {
+            transition: transform 1.9s linear, left 1.9s linear, top 1.9s linear !important;
+        }
+        .map-badge-pill {
+            display: inline-flex !important;
+            align-items: center !important;
+            gap: 6px !important;
+            white-space: nowrap !important;
+            width: auto !important;
+            min-width: max-content !important;
+            max-width: none !important;
+            box-sizing: border-box !important;
+            padding: 6px 14px !important;
+            border-radius: 9999px !important;
+            border: 2px solid #ffffff !important;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.35) !important;
+            transform: translate(-50%, -50%) !important;
         }
     </style>
 </head>
@@ -226,6 +259,30 @@
                         </div>
                     </div>
                 </div>
+            </div>
+
+            <!-- Live Route GPS Map Card -->
+            <div class="bg-white rounded-3xl border border-slate-100 p-6 shadow-soft mb-12">
+                <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-xl bg-brand-deep text-white flex items-center justify-center text-lg shadow-sm">
+                            <i class="bi bi-geo-alt-fill"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-extrabold text-brand-dark uppercase tracking-tight">Bus #{{ bus_no }} Live Route Map</h3>
+                            <p class="text-xs text-slate-500 font-medium" id="driver-route-subtitle">Waypoint navigation & real-time GPS tracking</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <span id="driver-sim-badge" class="px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-600 border border-slate-200 flex items-center gap-1.5">
+                            <span id="driver-sim-dot" class="w-2 h-2 rounded-full bg-slate-400"></span> <span id="driver-sim-text">Simulation Paused</span>
+                        </span>
+                        <button id="driver-sim-toggle-btn" type="button" onclick="toggleSimFromDriver(event)" class="px-4 py-2 rounded-xl bg-brand-deep text-white hover:bg-brand-dark font-bold text-xs uppercase tracking-wider transition-all flex items-center gap-2 shadow-sm">
+                            <i id="driver-sim-icon" class="bi bi-play-fill text-base"></i> <span id="driver-sim-btn-text">Start GPS Sim</span>
+                        </button>
+                    </div>
+                </div>
+                <div id="driver-route-map" class="w-full h-[360px] rounded-2xl border border-slate-200 z-10 overflow-hidden"></div>
             </div>
 
             <!-- QR Boarding Card -->
@@ -442,6 +499,70 @@
         const BUS_NO = document.body.getAttribute('data-bus-no');
         const mobileMenuToggle = document.getElementById('mobile-menu-toggle');
         const mobileMenu = document.getElementById('mobile-menu');
+
+        // Global Simulation Toggle Logic for Driver Portal
+        window.toggleSimFromDriver = function(e) {
+            if (e && e.preventDefault) e.preventDefault();
+            console.log("toggleSimFromDriver triggered");
+            
+            fetch('/api/toggle-simulation', { method: 'POST', headers: {'Content-Type': 'application/json'} })
+            .then(r => {
+                if (!r.ok) throw new Error("Server status " + r.status);
+                return r.json();
+            })
+            .then(data => {
+                const msg = data.message || (data.simulation_active ? "Simulation Started" : "Simulation Paused");
+                if (typeof showToast === 'function') {
+                    showToast(msg, "success");
+                } else {
+                    alert(msg);
+                }
+                updateDriverSimUI(data.simulation_active);
+                fetchDriverRouteMap();
+            }).catch(err => {
+                console.warn("POST failed, retrying via GET...", err);
+                fetch('/api/toggle-simulation')
+                .then(r => r.json())
+                .then(data => {
+                    const msg = data.message || (data.simulation_active ? "Simulation Started" : "Simulation Paused");
+                    if (typeof showToast === 'function') showToast(msg, "success");
+                    updateDriverSimUI(data.simulation_active);
+                    fetchDriverRouteMap();
+                }).catch(e2 => {
+                    console.error("Driver sim toggle error:", e2);
+                    alert("Failed to toggle simulation: " + e2.message);
+                });
+            });
+        };
+
+        function updateDriverSimUI(isActive) {
+            const dot = document.getElementById('driver-sim-dot');
+            const text = document.getElementById('driver-sim-text');
+            const badge = document.getElementById('driver-sim-badge');
+            const btnText = document.getElementById('driver-sim-btn-text');
+            const icon = document.getElementById('driver-sim-icon');
+
+            if (isActive) {
+                if (dot) dot.className = "w-2 h-2 rounded-full bg-emerald-500 animate-ping";
+                if (text) text.innerText = "Simulation Active";
+                if (badge) badge.className = "px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-600 border border-emerald-200 flex items-center gap-1.5";
+                if (btnText) btnText.innerText = "Pause GPS Sim";
+                if (icon) icon.className = "bi bi-pause-fill text-base";
+            } else {
+                if (dot) dot.className = "w-2 h-2 rounded-full bg-slate-400";
+                if (text) text.innerText = "Simulation Paused";
+                if (badge) badge.className = "px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-600 border border-slate-200 flex items-center gap-1.5";
+                if (btnText) btnText.innerText = "Start GPS Sim";
+                if (icon) icon.className = "bi bi-play-fill text-base";
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const btn = document.getElementById('driver-sim-toggle-btn');
+            if (btn) {
+                btn.onclick = window.toggleSimFromDriver;
+            }
+        });
 
         // Tab Navigation Pattern (Optimized for Tailwind)
         function showSection(id) {
@@ -767,6 +888,83 @@
             }
         }
         setInterval(syncFallbackQR, 2000);
+
+        // --- LEAFLET DRIVER ROUTE MAP LOGIC ---
+        let driverMap = null;
+        let driverBusMarker = null;
+        let driverRoutePolyline = null;
+        let driverStopMarkers = [];
+
+        function initDriverMap() {
+            const mapEl = document.getElementById('driver-route-map');
+            if (!mapEl || driverMap) return;
+
+            driverMap = L.map('driver-route-map').setView([11.3300, 77.6850], 13);
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                attribution: '&copy; OpenStreetMap'
+            }).addTo(driverMap);
+
+            setTimeout(() => {
+                if (driverMap) driverMap.invalidateSize();
+            }, 200);
+
+            fetchDriverRouteMap();
+        }
+
+        function fetchDriverRouteMap() {
+            fetch(`/api/bus-route/${encodeURIComponent(BUS_NO)}`)
+            .then(r => r.json())
+            .then(data => {
+                if (!data.waypoints) return;
+                if (driverMap) driverMap.invalidateSize();
+                updateDriverSimUI(data.simulation_active);
+
+                const subEl = document.getElementById('driver-route-subtitle');
+                if (subEl) subEl.innerText = `${data.route_name} • Driver: ${data.driver_name}`;
+
+                if (!driverRoutePolyline) {
+                    driverRoutePolyline = L.polyline(data.waypoints, {
+                        color: '#004d40',
+                        weight: 5,
+                        opacity: 0.8
+                    }).addTo(driverMap);
+                    driverMap.fitBounds(driverRoutePolyline.getBounds(), { padding: [30, 30] });
+                }
+
+                if (driverStopMarkers.length === 0 && data.stops) {
+                    data.stops.forEach(st => {
+                        const stopIcon = L.divIcon({
+                            className: 'custom-stop-icon',
+                            html: `<div class="map-badge-pill" style="background-color:#ff9800; color:white; font-weight:700; font-size:11px;">📍 ${st.name}</div>`,
+                            iconSize: null,
+                            iconAnchor: null
+                        });
+                        const m = L.marker([st.lat, st.lng], { icon: stopIcon }).addTo(driverMap).bindPopup(`<b>${st.name}</b>`);
+                        driverStopMarkers.push(m);
+                    });
+                }
+
+                const curLat = data.current_lat;
+                const curLng = data.current_lng;
+                const busIcon = L.divIcon({
+                    className: 'custom-driver-bus-icon',
+                    html: `<div class="map-badge-pill" style="background-color:#004d40; color:white; font-weight:800; font-size:12px;">🚌 Bus #${BUS_NO} Live</div>`,
+                    iconSize: null,
+                    iconAnchor: null
+                });
+
+                if (!driverBusMarker) {
+                    driverBusMarker = L.marker([curLat, curLng], { icon: busIcon }).addTo(driverMap).bindPopup(`<b>Bus #${BUS_NO} Live Position</b>`);
+                } else {
+                    driverBusMarker.setLatLng([curLat, curLng]);
+                }
+            }).catch(e => console.error("Driver route map fetch error:", e));
+        }
+
+        initDriverMap();
+        setInterval(fetchDriverRouteMap, 2000);
     </script>
 </body>
 
