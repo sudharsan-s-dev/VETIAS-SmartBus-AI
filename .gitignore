@@ -22,10 +22,11 @@ instance/*.db
 instance/*.sqlite
 !instance/.gitkeep
 
-# Temporary scratch & runtime snapshot uploads
+# Temporary scratch, demo photos, enrollment CSVs & upload snapshots
 scratch/
-static/uploads/snapshots/*.jpg
-static/uploads/snapshots/*.png
+demo_photos/
+enrollment_data/
+static/uploads/
 
 # OS generated files
 .DS_Store
