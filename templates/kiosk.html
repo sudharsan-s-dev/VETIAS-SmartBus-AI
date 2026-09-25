@@ -234,6 +234,10 @@
             return audioCtx;
         }
 
+        // Auto-unlock AudioContext on first user interaction anywhere on the page
+        document.addEventListener('click', () => { getAudioContext(); }, { once: true });
+        document.addEventListener('touchstart', () => { getAudioContext(); }, { once: true });
+
         // Web Audio API: Two-Tone Success Chime (C5 523Hz -> E5 659Hz)
         function playSuccessChime() {
             try {

@@ -701,11 +701,13 @@
             }).then(res => res.json()).then(data => {
                 isProcessingFrame = false;
                 if (data.status === 'success') {
-                    showAIBanner(true, "Boarding Approved: " + data.student_name, "Attendance Logged via AI Gate", (data.confidence || 98.5) + "%");
+                    const confVal = data.confidence !== undefined ? data.confidence : 98.5;
+                    showAIBanner(true, "Boarding Approved: " + data.student_name, "Attendance Logged via AI Gate", confVal + "%");
                     showToast("Boarding Approved: " + data.student_name, "success");
                     fetchManifest();
                 } else if (data.status === 'already_marked') {
-                    showAIBanner(true, "Already Boarded: " + data.student_name, "Attendance Previously Logged", (data.confidence || 98.5) + "%");
+                    const confVal = data.confidence !== undefined ? data.confidence : 98.5;
+                    showAIBanner(true, "Already Boarded: " + data.student_name, "Attendance Previously Logged", confVal + "%");
                 } else if (data.message && data.message.includes('Not Recognized')) {
                     showAIBanner(false, "Not Recognized — Use QR", "Student face embedding not matched. Please scan QR Code.", "No Match");
                 } else if (data.message && data.message.includes('No face detected')) {
