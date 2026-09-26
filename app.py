@@ -1276,52 +1276,57 @@ def enroll_face(student_id):
 @app.route('/api/mark-attendance-face', methods=['POST'])
 def mark_attendance_face():
     """
-    Face Recognition Attendance Endpoint.
-
-    GEOFENCE CLARIFICATION:
-    Since there is no student mobile device submitting GPS coordinates in this
-    facial recognition flow, we do NOT attempt to reuse the haversine student-vs-driver GPS check here.
-    The physical presence of the edge entrance camera on the bus serves as the location proof for this method.
-    Haversine geofence validation remains as-is, unchanged, for the QR scanning flow only.
+    Face Recognition Attendance Endpoint with Server-Side EAR Blink Liveness Verification.
     """
     data = request.json or {}
+    image_sequence = data.get('image_sequence')
     image_data = data.get('image_data')
     bus_no = data.get('bus_no', 'Bus-10')
-    liveness_verified = data.get('liveness_verified', True)
 
-    if not image_data:
-        return jsonify({'status': 'error', 'message': 'Missing camera image frame.'}), 400
+    raw_images = []
+    if image_sequence and isinstance(image_sequence, list) and len(image_sequence) > 0:
+        raw_images = image_sequence
+    elif image_data:
+        raw_images = [image_data]
+    else:
+        return jsonify({'status': 'error', 'message': 'Missing camera frame sequence.'}), 400
 
     import cv2
     import numpy as np
 
-    try:
-        if ',' in image_data:
-            image_data = image_data.split(',', 1)[1]
-        img_bytes = base64.b64decode(image_data)
-        img_array = np.frombuffer(img_bytes, np.uint8)
-        img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
-    except Exception as e:
-        return jsonify({'status': 'error', 'message': f'Invalid image data: {e}'}), 400
+    img_list = []
+    for raw_img in raw_images:
+        try:
+            if ',' in raw_img:
+                raw_img = raw_img.split(',', 1)[1]
+            img_bytes = base64.b64decode(raw_img)
+            img_array = np.frombuffer(img_bytes, np.uint8)
+            decoded = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
+            if decoded is not None:
+                img_list.append(decoded)
+        except Exception as e:
+            continue
 
-    if img is None:
-        return jsonify({'status': 'error', 'message': 'Could not decode image.'}), 400
+    if not img_list:
+        return jsonify({'status': 'error', 'message': 'Could not decode image frames.'}), 400
 
-    status, result, bbox = vision_helper.process_image_for_embedding(img, return_bbox=True)
+    status, res_dict = vision_helper.process_sequence_for_liveness_and_embedding(img_list)
 
-    # Do not clutter disk or DB when no face is detected in background frames
-    if status != 'SUCCESS':
-        return jsonify({'status': 'error', 'message': result, 'bbox': None})
+    if status in ('NO_FACE', 'MULTIPLE_FACES'):
+        return jsonify({'status': 'error', 'message': res_dict['message'], 'bbox': None})
 
-    current_embedding = result
+    current_embedding = res_dict['embedding']
+    bbox = res_dict['bbox']
+    best_img = res_dict['best_image']
+    liveness_verified = res_dict['liveness_verified']
+
     enrolled_students = Student.query.filter_by(face_enrolled=True).all()
-
     if not enrolled_students:
         return jsonify({'status': 'error', 'message': 'Not Recognized — Use QR', 'bbox': bbox})
 
     best_student = None
     min_dist = 999.0
-    MATCH_THRESHOLD = 0.45  # Strictly verified threshold (Imposters range 0.7128 - 1.0665, 0.45 provides +0.2628 margin)
+    MATCH_THRESHOLD = 0.45  # Strictly verified threshold
 
     for student in enrolled_students:
         if not student.face_embedding:
@@ -1338,104 +1343,105 @@ def mark_attendance_face():
 
     timestamp_str = datetime.datetime.now().strftime('%Y%m%d_%H%M%S_%f')
 
-    if min_dist < MATCH_THRESHOLD and best_student:
-        if not liveness_verified:
-            # Save snapshot for flagged liveness failure (anti-proxy)
-            snapshot_filename = f"liveness_alert_{timestamp_str}.jpg"
-            snapshot_abs_path = os.path.join(SNAPSHOT_FOLDER, snapshot_filename)
-            snapshot_rel_path = f"static/uploads/snapshots/{snapshot_filename}"
-            cv2.imwrite(snapshot_abs_path, img)
-
-            alert = SecurityAlert(
-                student_id=best_student.id,
-                bus_no=bus_no,
-                reason='Liveness Check Failed (Static Image Detected)',
-                snapshot_path=snapshot_rel_path
-            )
-            db.session.add(alert)
-            db.session.commit()
-            return jsonify({'status': 'error', 'message': 'Liveness Verification Failed — Blink Required', 'bbox': bbox})
-
-        # Decoupled Raw Cosine Similarity %: (1.0 - min_dist) * 100
-        confidence = round(max(0.0, (1.0 - min_dist) * 100.0), 1)
-
-        # DEBOUNCE / DUPLICATE CHECK: Check if student has already boarded on this bus trip today
-        today_start = datetime.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-        last_empty = BUS_EMPTY_CACHE.get(bus_no, today_start)
-        since_time = max(today_start, last_empty)
-
-        existing_att = Attendance.query.filter(
-            Attendance.student_id == best_student.id,
-            db.func.lower(Attendance.bus_no) == bus_no.lower(),
-            Attendance.timestamp >= since_time
-        ).first()
-
-        if existing_att:
-            return jsonify({
-                'status': 'already_marked',
-                'message': f'Boarded: {best_student.name} (Already Marked)',
-                'student_name': best_student.name,
-                'student_id': best_student.id,
-                'confidence': confidence,
-                'bbox': bbox
-            })
-
-        # SUCCESSFUL FIRST FACE RECOGNITION BOARDING: Save snapshot for Admin Review
-        snapshot_filename = f"success_{timestamp_str}_{best_student.id}.jpg"
+    # Enforce Server-Side EAR Liveness Check
+    if not liveness_verified:
+        snapshot_filename = f"liveness_alert_{timestamp_str}.jpg"
         snapshot_abs_path = os.path.join(SNAPSHOT_FOLDER, snapshot_filename)
         snapshot_rel_path = f"static/uploads/snapshots/{snapshot_filename}"
-        cv2.imwrite(snapshot_abs_path, img)
+        if best_img is not None:
+            cv2.imwrite(snapshot_abs_path, best_img)
 
-        new_att = Attendance(
-            student_id=best_student.id,
-            student_name=best_student.name,
-            timestamp=datetime.datetime.now(),
-            method='FACE',
-            entry_method='FACE',
-            loc_verified=True,
-            bus_no=bus_no,
-            confidence_score=confidence,
-            liveness_verified=True,
-            verification_status='VERIFIED'
-        )
-        db.session.add(new_att)
-
-        # Also log to Security Alerts panel for executive admin review
+        target_student_id = best_student.id if (min_dist < MATCH_THRESHOLD and best_student) else None
         alert = SecurityAlert(
-            student_id=best_student.id,
+            student_id=target_student_id,
             bus_no=bus_no,
-            reason=f"Verified Face AI Boarding: {best_student.name} ({confidence}%)",
+            reason='Liveness Check Failed (Static Image Detected)',
             snapshot_path=snapshot_rel_path
         )
         db.session.add(alert)
         db.session.commit()
+        return jsonify({'status': 'error', 'message': 'Liveness Verification Failed — Blink Required', 'bbox': bbox}), 400
 
-        now = datetime.datetime.now()
-        time_str = now.strftime('%H:%M')
-        date_str = now.strftime('%d-%m-%Y')
-        p_email = best_student.parent_email
-        s_name = best_student.name
+    if min_dist >= MATCH_THRESHOLD or not best_student:
+        return jsonify({'status': 'error', 'message': 'Not Recognized — Use QR', 'bbox': bbox})
 
-        def async_notification_wrapper(app_inst, email_addr, name_str, b_no, t_str, d_str):
-            with app_inst.app_context():
-                NotificationService.send_parent_email(email_addr, name_str, b_no, t_str, d_str)
+    # Decoupled Raw Cosine Similarity %: (1.0 - min_dist) * 100
+    confidence = round(max(0.0, (1.0 - min_dist) * 100.0), 1)
 
-        threading.Thread(
-            target=async_notification_wrapper, 
-            args=(app, p_email, s_name, bus_no, time_str, date_str)
-        ).start()
+    # DEBOUNCE / DUPLICATE CHECK: Check if student has already boarded on this bus trip today
+    today_start = datetime.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    last_empty = BUS_EMPTY_CACHE.get(bus_no, today_start)
+    since_time = max(today_start, last_empty)
 
+    existing_att = Attendance.query.filter(
+        Attendance.student_id == best_student.id,
+        db.func.lower(Attendance.bus_no) == bus_no.lower(),
+        Attendance.timestamp >= since_time
+    ).first()
+
+    if existing_att:
         return jsonify({
-            'status': 'success',
-            'message': f'Boarding Approved: {best_student.name}',
+            'status': 'already_marked',
+            'message': f'Boarded: {best_student.name} (Already Marked)',
             'student_name': best_student.name,
             'student_id': best_student.id,
             'confidence': confidence,
             'bbox': bbox
         })
-    else:
-        # Unrecognized face: do not flood disk with background frames
-        return jsonify({'status': 'error', 'message': 'Not Recognized — Use QR', 'bbox': bbox})
+
+    # SUCCESSFUL FIRST FACE RECOGNITION BOARDING: Save snapshot for Admin Review
+    snapshot_filename = f"success_{timestamp_str}_{best_student.id}.jpg"
+    snapshot_abs_path = os.path.join(SNAPSHOT_FOLDER, snapshot_filename)
+    snapshot_rel_path = f"static/uploads/snapshots/{snapshot_filename}"
+    if best_img is not None:
+        cv2.imwrite(snapshot_abs_path, best_img)
+
+    new_att = Attendance(
+        student_id=best_student.id,
+        student_name=best_student.name,
+        timestamp=datetime.datetime.now(),
+        method='FACE',
+        entry_method='FACE',
+        loc_verified=True,
+        bus_no=bus_no,
+        confidence_score=confidence,
+        liveness_verified=True,
+        verification_status='VERIFIED'
+    )
+    db.session.add(new_att)
+
+    # Also log to Security Alerts panel for executive admin review
+    alert = SecurityAlert(
+        student_id=best_student.id,
+        bus_no=bus_no,
+        reason=f"Verified Face AI Boarding: {best_student.name} ({confidence}%)",
+        snapshot_path=snapshot_rel_path
+    )
+    db.session.add(alert)
+    db.session.commit()
+
+    now = datetime.datetime.now()
+    time_str = now.strftime('%H:%M')
+    date_str = now.strftime('%d-%m-%Y')
+    p_email = best_student.parent_email
+    s_name = best_student.name
+
+    def async_notification_wrapper(app_inst, email_addr, name_str, b_no, t_str, d_str):
+        with app_inst.app_context():
+            NotificationService.send_parent_email(email_addr, name_str, b_no, t_str, d_str)
+
+    threading.Thread(
+        target=async_notification_wrapper, 
+        args=(app, p_email, s_name, bus_no, time_str, date_str)
+    ).start()
+
+    return jsonify({
+        'status': 'success',
+        'message': f'Boarding Approved: {best_student.name}',
+        'student_name': best_student.name,
+        'student_id': best_student.id,
+        'confidence': confidence,
+    })
 
 # --- BUS OCCUPANCY & IOT KIOSK (PHASE 4) ---
 

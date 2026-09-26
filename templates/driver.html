@@ -795,7 +795,7 @@
             hideAIBanner();
         }
 
-        function captureAndSendFaceFrame() {
+        async function captureAndSendFaceFrame() {
             if (!aiCameraStream || isProcessingFrame) return;
 
             const video = document.getElementById('ai-video');
@@ -803,24 +803,36 @@
 
             isProcessingFrame = true;
 
-            const canvas = document.createElement('canvas');
-            canvas.width = video.videoWidth || 640;
-            canvas.height = video.videoHeight || 480;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            try {
+                // Multi-frame burst capture for server-side EAR blink liveness verification
+                const frames = [];
+                const NUM_FRAMES = 6;
+                const FRAME_INTERVAL_MS = 180;
 
-            const b64Image = canvas.toDataURL('image/jpeg', 0.75);
+                for (let i = 0; i < NUM_FRAMES; i++) {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = video.videoWidth || 640;
+                    canvas.height = video.videoHeight || 480;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    frames.push(canvas.toDataURL('image/jpeg', 0.75));
+                    if (i < NUM_FRAMES - 1) {
+                        await new Promise(r => setTimeout(r, FRAME_INTERVAL_MS));
+                    }
+                }
 
-            fetch('/api/mark-attendance-face', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    image_data: b64Image,
-                    bus_no: BUS_NO,
-                    liveness_verified: true
-                })
-            }).then(res => res.json()).then(data => {
+                const res = await fetch('/api/mark-attendance-face', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        image_sequence: frames,
+                        bus_no: BUS_NO
+                    })
+                });
+
+                const data = await res.json();
                 isProcessingFrame = false;
+
                 if (data.status === 'success') {
                     const confVal = data.confidence !== undefined ? data.confidence : 98.5;
                     showAIBanner(true, "Boarding Approved: " + data.student_name, "Attendance Logged via AI Gate", confVal + "%");
@@ -829,17 +841,20 @@
                 } else if (data.status === 'already_marked') {
                     const confVal = data.confidence !== undefined ? data.confidence : 98.5;
                     showAIBanner(true, "Already Boarded: " + data.student_name, "Attendance Previously Logged", confVal + "%");
+                } else if (data.message && data.message.includes('Liveness Verification Failed')) {
+                    showAIBanner(false, "Liveness Alert", "Blink Required — Static Photo Blocked", "Spoof Blocked");
+                    showToast("Liveness Alert: Blink Required", "error");
                 } else if (data.message && data.message.includes('Not Recognized')) {
                     showAIBanner(false, "Not Recognized — Use QR", "Student face embedding not matched. Please scan QR Code.", "No Match");
-                } else if (data.message && data.message.includes('No face detected')) {
+                } else if (data.message && (data.message.includes('No face detected') || data.message.includes('No face'))) {
                     hideAIBanner();
                 } else {
                     showAIBanner(false, "AI Gate Notice", data.message || "Verification Notice", "--");
                 }
-            }).catch(err => {
+            } catch (err) {
                 isProcessingFrame = false;
                 console.error("AI Gate API Error:", err);
-            });
+            }
         }
 
         function showAIBanner(isSuccess, title, subtitle, confidenceText) {

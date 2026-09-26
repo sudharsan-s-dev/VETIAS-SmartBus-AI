@@ -39,7 +39,7 @@ RIGHT_EYE_LEFT = 362
 RIGHT_EYE_RIGHT = 263
 
 EAR_CLOSED_THRESHOLD = 0.19
-EAR_OPEN_THRESHOLD = 0.23
+EAR_OPEN_THRESHOLD = 0.21
 
 _landmarker_detector = None
 
@@ -217,7 +217,9 @@ def process_image_for_embedding(cv2_img, return_bbox=False):
 def calculate_ear_from_landmarks(landmarks, width, height):
     def get_pt(idx):
         lm = landmarks[idx]
-        return np.array([lm.x * width, lm.y * height])
+        if hasattr(lm, 'x'):
+            return np.array([lm.x * width, lm.y * height])
+        return np.array([lm[0] * width, lm[1] * height])
 
     left_top = get_pt(LEFT_EYE_TOP)
     left_bot = get_pt(LEFT_EYE_BOTTOM)
@@ -235,7 +237,149 @@ def calculate_ear_from_landmarks(landmarks, width, height):
     right_h = np.linalg.norm(right_left - right_right)
     right_ear = right_v / (right_h + 1e-6)
 
-    return (left_ear + right_ear) / 2.0
+    return float((left_ear + right_ear) / 2.0)
+
+def calculate_normalized_eyelid_ratio(landmarks, width, height):
+    """
+    Computes 3D-Invariant Normalized Eyelid Height Ratio: R = EyelidHeight / NoseEyeDistance.
+    This ratio is mathematically invariant to 2D phone screen scaling and 2D perspective tilts,
+    allowing us to distinguish genuine eyelid closure from phone screen movement.
+    """
+    def get_pt(idx):
+        lm = landmarks[idx]
+        if hasattr(lm, 'x'):
+            return np.array([lm.x * width, lm.y * height])
+        return np.array([lm[0] * width, lm[1] * height])
+
+    left_top = get_pt(LEFT_EYE_TOP)
+    left_bot = get_pt(LEFT_EYE_BOTTOM)
+    right_top = get_pt(RIGHT_EYE_TOP)
+    right_bot = get_pt(RIGHT_EYE_BOTTOM)
+
+    left_v = np.linalg.norm(left_top - left_bot)
+    right_v = np.linalg.norm(right_top - right_bot)
+    avg_eyelid_h = (left_v + right_v) / 2.0
+
+    nose = get_pt(1)
+    if len(landmarks) >= 474:
+        left_eye = get_pt(468)
+        right_eye = get_pt(473)
+    else:
+        left_eye = (get_pt(33) + get_pt(133)) / 2.0
+        right_eye = (get_pt(362) + get_pt(263)) / 2.0
+
+    eye_center = (left_eye + right_eye) / 2.0
+    nose_eye_dist = np.linalg.norm(nose - eye_center) + 1e-6
+
+    return float(avg_eyelid_h / nose_eye_dist)
+
+def process_sequence_for_liveness_and_embedding(cv2_img_list):
+    """
+    Processes a sequence of frame images to perform server-side EAR & 3D-Invariant Normalized
+    eyelid drop liveness verification, rejecting 2D mobile photo/screen spoof attempts.
+
+    Returns:
+        (status_code, result_dict)
+        status_code: 'SUCCESS', 'LIVENESS_FAILED', 'NO_FACE', or 'MULTIPLE_FACES'
+    """
+    if not isinstance(cv2_img_list, list):
+        cv2_img_list = [cv2_img_list]
+
+    detector = get_detector()
+    valid_frames = []
+    no_face_count = 0
+    multi_face_count = 0
+
+    for idx, img in enumerate(cv2_img_list):
+        if img is None:
+            continue
+        h, w, _ = img.shape
+        face_list = detector(img)
+
+        if len(face_list) == 0:
+            no_face_count += 1
+            continue
+        elif len(face_list) > 1:
+            multi_face_count += 1
+            continue
+
+        landmarks = face_list[0]
+        ear = calculate_ear_from_landmarks(landmarks, w, h)
+        norm_r = calculate_normalized_eyelid_ratio(landmarks, w, h)
+        valid_frames.append({
+            'index': idx,
+            'ear': ear,
+            'norm_r': norm_r,
+            'img': img,
+            'landmarks': landmarks
+        })
+
+    if not valid_frames or len(valid_frames) < 3:
+        if multi_face_count > 0:
+            return 'MULTIPLE_FACES', {
+                'embedding': None, 'bbox': None, 'best_image': None,
+                'liveness_verified': False, 'ear_sequence': [],
+                'message': 'Multiple faces detected. Please ensure only one face is in view.'
+            }
+        return 'NO_FACE', {
+            'embedding': None, 'bbox': None, 'best_image': None,
+            'liveness_verified': False, 'ear_sequence': [],
+            'message': 'No clear single face detected in sequence.'
+        }
+
+    ear_sequence = [f['ear'] for f in valid_frames]
+    norm_r_sequence = [f['norm_r'] for f in valid_frames]
+
+    r_max = max(norm_r_sequence)
+    r_min = min(norm_r_sequence)
+    r_delta = r_max - r_min
+    rel_drop = r_delta / (r_max + 1e-6)
+
+    ear_min = min(ear_sequence)
+    ear_max = max(ear_sequence)
+
+    # Strict Liveness Verification Rules (Busts 2D Mobile Photo & Phone Screen Tilts):
+    # 1. Open eyes baseline: EAR >= EAR_OPEN_THRESHOLD (0.21) and Normalized Eyelid Ratio R >= 0.17
+    has_open = (ear_max >= EAR_OPEN_THRESHOLD) and (r_max >= 0.17)
+    # 2. Closed eyes / blink frame present: EAR <= EAR_CLOSED_THRESHOLD (0.19)
+    has_closed = (ear_min <= EAR_CLOSED_THRESHOLD)
+    # 3. Normalized Eyelid Relative Drop >= 25% (2D phone tilts/movements give < 15%, real blinks give > 30-65%)
+    has_real_blink_drop = (rel_drop >= 0.25)
+
+    # 4. Chronological Blink Timing check: Closed-eyes minimum ratio frame occurs with open-eyes before or after
+    min_idx = norm_r_sequence.index(r_min)
+    open_before = any(r >= 0.17 for r in norm_r_sequence[:min_idx]) if min_idx > 0 else False
+    open_after = any(r >= 0.17 for r in norm_r_sequence[min_idx+1:]) if min_idx < len(norm_r_sequence)-1 else False
+    valid_timing = open_before or open_after
+
+    liveness_verified = has_open and has_closed and has_real_blink_drop and valid_timing
+
+    # Select frame with highest EAR / norm_r (eyes wide open) for ONNX facial embedding extraction
+    best_frame = max(valid_frames, key=lambda f: f['norm_r'])
+    best_img = best_frame['img']
+    best_landmarks = best_frame['landmarks']
+
+    embedding = extract_deep_embedding_from_landmarks(best_img, best_landmarks)
+    bbox = extract_bbox_from_landmarks(best_img, best_landmarks)
+
+    if liveness_verified:
+        return 'SUCCESS', {
+            'embedding': embedding,
+            'bbox': bbox,
+            'best_image': best_img,
+            'liveness_verified': True,
+            'ear_sequence': ear_sequence,
+            'message': f'Liveness verified (Blink detected: EAR range {ear_min:.3f}-{ear_max:.3f}, relative drop {rel_drop*100:.1f}%)'
+        }
+    else:
+        return 'LIVENESS_FAILED', {
+            'embedding': embedding,
+            'bbox': bbox,
+            'best_image': best_img,
+            'liveness_verified': False,
+            'ear_sequence': ear_sequence,
+            'message': f'Liveness Verification Failed — Blink Required (EAR range {ear_min:.3f}-{ear_max:.3f}, relative drop {rel_drop*100:.1f}%)'
+        }
 
 def compute_vector_distance(vec1, vec2):
     v1 = np.array(vec1, dtype=np.float32)
@@ -253,3 +397,4 @@ def compute_vector_distance(vec1, vec2):
     cos_sim = float(np.dot(v1, v2))
     cos_dist = float(1.0 - cos_sim)
     return cos_dist, cos_sim
+

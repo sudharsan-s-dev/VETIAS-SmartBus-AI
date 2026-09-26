@@ -425,21 +425,29 @@
             isProcessing = true;
 
             try {
-                const tmpCanvas = document.createElement('canvas');
-                tmpCanvas.width = canvas.width || 640;
-                tmpCanvas.height = canvas.height || 480;
-                const tmpCtx = tmpCanvas.getContext('2d');
-                tmpCtx.drawImage(video, 0, 0, tmpCanvas.width, tmpCanvas.height);
+                // Multi-frame burst capture for server-side EAR blink liveness verification
+                const frames = [];
+                const NUM_FRAMES = 6;
+                const FRAME_INTERVAL_MS = 180;
 
-                const dataUri = tmpCanvas.toDataURL('image/jpeg', 0.85);
+                for (let i = 0; i < NUM_FRAMES; i++) {
+                    const tmpCanvas = document.createElement('canvas');
+                    tmpCanvas.width = canvas.width || 640;
+                    tmpCanvas.height = canvas.height || 480;
+                    const tmpCtx = tmpCanvas.getContext('2d');
+                    tmpCtx.drawImage(video, 0, 0, tmpCanvas.width, tmpCanvas.height);
+                    frames.push(tmpCanvas.toDataURL('image/jpeg', 0.75));
+                    if (i < NUM_FRAMES - 1) {
+                        await new Promise(r => setTimeout(r, FRAME_INTERVAL_MS));
+                    }
+                }
 
                 const res = await fetch('/api/mark-attendance-face', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        image_data: dataUri,
-                        bus_no: busNo,
-                        liveness_verified: true
+                        image_sequence: frames,
+                        bus_no: busNo
                     })
                 });
 
