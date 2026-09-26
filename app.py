@@ -52,9 +52,19 @@ app.config['SESSION_TYPE'] = 'filesystem'
 SKIP_DEVICE_CHECK = os.environ.get('SKIP_DEVICE_CHECK', 'False') == 'True'
 GEOFENCE_LIMIT = int(os.environ.get('GEOFENCE_LIMIT', 100)) # Default 100m for better GPS reliability
 
-# Preset Passcodes for Staff & Driver Registration Gate (Environment Override First)
-DRIVER_PASSCODES = [os.environ.get('DRIVER_REGISTER_CODE', 'DRIVER2026'), 'DRIVER2026', 'driver2026', 'driver', 'driver123', 'VET_DRIVER_2026']
-ADMIN_PASSCODES = [os.environ.get('ADMIN_REGISTER_CODE', 'ADMIN2026'), 'ADMIN2026', 'admin2026', 'admin', 'admin123', 'VET_ADMIN_2026']
+# Staff & Driver Registration Gate Passcodes (Environment Variables Required)
+DRIVER_REGISTER_CODE = (os.environ.get('DRIVER_REGISTER_CODE') or os.environ.get('STAFF_REGISTER_CODE') or '').strip()
+ADMIN_REGISTER_CODE = (os.environ.get('ADMIN_REGISTER_CODE') or os.environ.get('STAFF_REGISTER_CODE') or '').strip()
+
+def is_valid_driver_passcode(code):
+    if not DRIVER_REGISTER_CODE or not code:
+        return False
+    return code == DRIVER_REGISTER_CODE
+
+def is_valid_admin_passcode(code):
+    if not ADMIN_REGISTER_CODE or not code:
+        return False
+    return code == ADMIN_REGISTER_CODE
 
 db.init_app(app)
 Session(app)
@@ -874,10 +884,16 @@ def verify_staff_passcode():
     data = request.json or request.form
     code = (data.get('passcode') or '').strip()
     
-    if code in DRIVER_PASSCODES:
+    if not code:
+        return jsonify({'status': 'error', 'message': 'Passcode is required.'}), 400
+
+    if not DRIVER_REGISTER_CODE and not ADMIN_REGISTER_CODE:
+        return jsonify({'status': 'error', 'message': 'Staff registration gate is disabled because DRIVER_REGISTER_CODE / ADMIN_REGISTER_CODE environment variables are not set in .env.'}), 403
+
+    if is_valid_driver_passcode(code):
         session['staff_gate_unlocked'] = 'driver'
         return jsonify({'status': 'success', 'role': 'driver', 'redirect': '/register/driver'})
-    elif code in ADMIN_PASSCODES:
+    elif is_valid_admin_passcode(code):
         session['staff_gate_unlocked'] = 'admin'
         return jsonify({'status': 'success', 'role': 'admin', 'redirect': '/register/admin'})
     else:
@@ -894,8 +910,9 @@ def register_driver():
         password = request.form.get('password')
         confirm_password = request.form.get('confirm_password')
 
-        if access_code and access_code not in DRIVER_PASSCODES:
-            return render_template('register_driver.html', error="Invalid Driver Authorization Code.")
+        if access_code:
+            if not is_valid_driver_passcode(access_code):
+                return render_template('register_driver.html', error="Invalid Driver Authorization Code.")
 
         if not name or not phone or not employee_id or not password:
             return render_template('register_driver.html', error="All fields marked with * are required.")
@@ -939,8 +956,9 @@ def register_admin():
         password = request.form.get('password')
         confirm_password = request.form.get('confirm_password')
 
-        if access_code and access_code not in ADMIN_PASSCODES:
-            return render_template('register_admin.html', error="Invalid Admin Authorization Code.")
+        if access_code:
+            if not is_valid_admin_passcode(access_code):
+                return render_template('register_admin.html', error="Invalid Admin Authorization Code.")
 
         if not name or not email or not password:
             return render_template('register_admin.html', error="All fields marked with * are required.")
